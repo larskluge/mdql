@@ -1,0 +1,645 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000010000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* AppDelegate.swift */; };
+		A10000020000000000000002 /* PreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000002 /* PreviewController.swift */; };
+		A10000030000000000000003 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		A10000040000000000000004 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
+		A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000050000000000000005 /* MarkdownRendererTests.swift */; };
+		A10000060000000000000006 /* mkqlPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A30000020000000000000002 /* mkqlPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000070000000000000007 /* basic.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000070000000000000007 /* basic.md */; };
+		A10000080000000000000008 /* gfm.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000080000000000000008 /* gfm.md */; };
+		A10000090000000000000009 /* empty.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000090000000000000009 /* empty.md */; };
+		A1000000000000000000000A /* special-chars.md in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* special-chars.md */; };
+		A1000000000000000000000B /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A5000001000000000000000B /* Markdown */; };
+		A1000000000000000000000C /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		A1000000000000000000000D /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
+		A1000000000000000000000E /* PreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000002 /* PreviewController.swift */; };
+		A1000000000000000000000F /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A5000002000000000000000B /* Markdown */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A40000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B10000010000000000000001;
+			remoteInfo = mkql;
+		};
+		A40000020000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B10000020000000000000002;
+			remoteInfo = mkqlPreview;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A70000010000000000000001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A10000060000000000000006 /* mkqlPreview.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A20000010000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A20000020000000000000002 /* PreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewController.swift; sourceTree = "<group>"; };
+		A20000030000000000000003 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		A20000040000000000000004 /* preview.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = preview.css; sourceTree = "<group>"; };
+		A20000050000000000000005 /* MarkdownRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRendererTests.swift; sourceTree = "<group>"; };
+		A20000060000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000070000000000000007 /* basic.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = basic.md; sourceTree = "<group>"; };
+		A20000080000000000000008 /* gfm.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = gfm.md; sourceTree = "<group>"; };
+		A20000090000000000000009 /* empty.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = empty.md; sourceTree = "<group>"; };
+		A2000000000000000000000A /* special-chars.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "special-chars.md"; sourceTree = "<group>"; };
+		A2000000000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000000000000000000000C /* mkql.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mkql.entitlements; sourceTree = "<group>"; };
+		A2000000000000000000000D /* mkqlPreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mkqlPreview.entitlements; sourceTree = "<group>"; };
+		A30000010000000000000001 /* mkql.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mkql.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000020000000000000002 /* mkqlPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = mkqlPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A30000030000000000000003 /* mkqlTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mkqlTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A80000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A80000020000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000B /* Markdown in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A80000030000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000F /* Markdown in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A90000010000000000000001 /* mkql */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000001 /* AppDelegate.swift */,
+				A2000000000000000000000B /* Info.plist */,
+				A2000000000000000000000C /* mkql.entitlements */,
+			);
+			path = mkql;
+			sourceTree = "<group>";
+		};
+		A90000020000000000000002 /* mkqlPreview */ = {
+			isa = PBXGroup;
+			children = (
+				A20000020000000000000002 /* PreviewController.swift */,
+				A20000030000000000000003 /* MarkdownRenderer.swift */,
+				A90000050000000000000005 /* Resources */,
+				A20000060000000000000006 /* Info.plist */,
+				A2000000000000000000000D /* mkqlPreview.entitlements */,
+			);
+			path = mkqlPreview;
+			sourceTree = "<group>";
+		};
+		A90000030000000000000003 /* mkqlTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20000050000000000000005 /* MarkdownRendererTests.swift */,
+				A90000040000000000000004 /* Fixtures */,
+			);
+			path = mkqlTests;
+			sourceTree = "<group>";
+		};
+		A90000040000000000000004 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				A20000070000000000000007 /* basic.md */,
+				A20000080000000000000008 /* gfm.md */,
+				A20000090000000000000009 /* empty.md */,
+				A2000000000000000000000A /* special-chars.md */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		A90000050000000000000005 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A20000040000000000000004 /* preview.css */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A90000060000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000010000000000000001 /* mkql.app */,
+				A30000020000000000000002 /* mkqlPreview.appex */,
+				A30000030000000000000003 /* mkqlTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A90000000000000000000000 = {
+			isa = PBXGroup;
+			children = (
+				A90000010000000000000001 /* mkql */,
+				A90000020000000000000002 /* mkqlPreview */,
+				A90000030000000000000003 /* mkqlTests */,
+				A90000060000000000000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B10000010000000000000001 /* mkql */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B30000010000000000000001 /* Build configuration list for PBXNativeTarget "mkql" */;
+			buildPhases = (
+				B20000010000000000000001 /* Sources */,
+				A80000010000000000000001 /* Frameworks */,
+				B20000040000000000000004 /* Resources */,
+				A70000010000000000000001 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B40000010000000000000001 /* PBXTargetDependency */,
+			);
+			name = mkql;
+			packageProductDependencies = (
+			);
+			productName = mkql;
+			productReference = A30000010000000000000001 /* mkql.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B10000020000000000000002 /* mkqlPreview */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B30000020000000000000002 /* Build configuration list for PBXNativeTarget "mkqlPreview" */;
+			buildPhases = (
+				B20000020000000000000002 /* Sources */,
+				A80000020000000000000002 /* Frameworks */,
+				B20000050000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = mkqlPreview;
+			packageProductDependencies = (
+				A5000001000000000000000B /* Markdown */,
+			);
+			productName = mkqlPreview;
+			productReference = A30000020000000000000002 /* mkqlPreview.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B10000030000000000000003 /* mkqlTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B30000030000000000000003 /* Build configuration list for PBXNativeTarget "mkqlTests" */;
+			buildPhases = (
+				B20000030000000000000003 /* Sources */,
+				A80000030000000000000003 /* Frameworks */,
+				B20000060000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B40000020000000000000002 /* PBXTargetDependency */,
+			);
+			name = mkqlTests;
+			packageProductDependencies = (
+				A5000002000000000000000B /* Markdown */,
+			);
+			productName = mkqlTests;
+			productReference = A30000030000000000000003 /* mkqlTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A60000010000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					B10000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					B10000020000000000000002 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					B10000030000000000000003 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = B10000010000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = B30000040000000000000004 /* Build configuration list for PBXProject "mkql" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A90000000000000000000000;
+			packageReferences = (
+				A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */,
+			);
+			productRefGroup = A90000060000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B10000010000000000000001 /* mkql */,
+				B10000020000000000000002 /* mkqlPreview */,
+				B10000030000000000000003 /* mkqlTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B20000040000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B20000050000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000040000000000000004 /* preview.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B20000060000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000070000000000000007 /* basic.md in Resources */,
+				A10000080000000000000008 /* gfm.md in Resources */,
+				A10000090000000000000009 /* empty.md in Resources */,
+				A1000000000000000000000A /* special-chars.md in Resources */,
+				A1000000000000000000000D /* preview.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B20000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000001 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B20000020000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000020000000000000002 /* PreviewController.swift in Sources */,
+				A10000030000000000000003 /* MarkdownRenderer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B20000030000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */,
+				A1000000000000000000000C /* MarkdownRenderer.swift in Sources */,
+				A1000000000000000000000E /* PreviewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B40000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B10000020000000000000002 /* mkqlPreview */;
+			targetProxy = A40000020000000000000002 /* PBXContainerItemProxy */;
+		};
+		B40000020000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B10000010000000000000001 /* mkql */;
+			targetProxy = A40000010000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		C10000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C10000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		C20000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = mkql/mkql.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = mkql/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mkql.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C20000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = mkql/mkql.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = mkql/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mkql.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C30000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = mkqlPreview/mkqlPreview.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = mkqlPreview/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mkql.app.preview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C30000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = mkqlPreview/mkqlPreview.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = mkqlPreview/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mkql.app.preview;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C40000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				/* BUNDLE_LOADER removed - standalone test */
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mkql.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				/* TEST_HOST removed - standalone test */
+			};
+			name = Debug;
+		};
+		C40000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				/* BUNDLE_LOADER removed - standalone test */
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mkql.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				/* TEST_HOST removed - standalone test */
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B30000010000000000000001 /* Build configuration list for PBXNativeTarget "mkql" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C20000010000000000000001 /* Debug */,
+				C20000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B30000020000000000000002 /* Build configuration list for PBXNativeTarget "mkqlPreview" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C30000010000000000000001 /* Debug */,
+				C30000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B30000030000000000000003 /* Build configuration list for PBXNativeTarget "mkqlTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C40000010000000000000001 /* Debug */,
+				C40000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B30000040000000000000004 /* Build configuration list for PBXProject "mkql" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C10000010000000000000001 /* Debug */,
+				C10000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swiftlang/swift-markdown.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A5000001000000000000000B /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+		A5000002000000000000000B /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+/* End XCSwiftPackageProductDependency section */
+
+	};
+	rootObject = A60000010000000000000001 /* Project object */;
+}
