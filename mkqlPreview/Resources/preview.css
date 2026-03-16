@@ -25,9 +25,9 @@
 }
 
 body {
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    font-size: 16px;
-    line-height: 1.6;
+    font-family: Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.7;
     color: var(--text-color);
     background-color: var(--bg-color);
     margin: 0;
@@ -41,21 +41,18 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-    font-weight: 500;
+    font-weight: 700;
     line-height: 1.25;
     margin: 1.5em 0 0.5em;
 }
 
 h1 {
     font-size: 34px;
-    border-bottom: 1px solid var(--border-color);
     padding-bottom: 0.3em;
 }
 
 h2 {
     font-size: 28px;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.3em;
 }
 
 h3 {
@@ -67,7 +64,7 @@ h4 {
 }
 
 p, ul, ol, blockquote, pre, table {
-    margin: 0 0 2.5em;
+    margin: 0 0 1em;
 }
 
 a {
@@ -156,8 +153,19 @@ li {
     margin-bottom: 0.25em;
 }
 
+/* Task list checkboxes */
+li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-left: -1.4em;
+}
+
+li:has(> input[type="checkbox"]) > p {
+    display: inline;
+}
+
 input[type="checkbox"] {
     margin-right: 0.5em;
+    vertical-align: middle;
 }
 
 del {
