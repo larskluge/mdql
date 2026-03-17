@@ -26,10 +26,8 @@ class FileWatcher {
         coalesceWorkItem = nil
         source?.cancel()
         source = nil
-        if fileDescriptor >= 0 {
-            close(fileDescriptor)
-            fileDescriptor = -1
-        }
+        // fileDescriptor is closed by the source's cancel handler
+        fileDescriptor = -1
     }
 
     deinit {
@@ -59,11 +57,10 @@ class FileWatcher {
             self.scheduleCallback()
         }
 
-        source.setCancelHandler { [weak self] in
-            guard let self = self else { return }
-            if self.fileDescriptor >= 0 {
-                close(self.fileDescriptor)
-                self.fileDescriptor = -1
+        let fd = fileDescriptor
+        source.setCancelHandler {
+            if fd >= 0 {
+                close(fd)
             }
         }
 
