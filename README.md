@@ -2,6 +2,8 @@
 
 A macOS Quick Look extension for previewing Markdown files. Press Space on any `.md` file in Finder to see a rendered preview — with **live updates** as the file changes.
 
+![mdql preview](assets/preview.png)
+
 ## Features
 
 - **Live preview** — edit a Markdown file and watch the QuickLook preview update in real-time
