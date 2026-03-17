@@ -7,7 +7,7 @@ A macOS Quick Look extension for previewing Markdown files. Press Space on any `
 - **Live preview** — edit a Markdown file and watch the QuickLook preview update in real-time
 - **GitHub Flavored Markdown** — tables, task lists, strikethrough, fenced code blocks with language hints
 - **Light & dark mode** — automatically follows system appearance
-- **Inkpad-inspired styling** — clean typography with thoughtful spacing and color tokens. Big shout out to Mariusz and Matt for the epic work together on [Inkpad](https://github.com/nicothin/inkpad) nearly a decade ago
+- **Inkpad-inspired styling** — clean typography with thoughtful spacing and color tokens. Big shout out to Mariusz and Matt for the epic work together on Inkpad nearly a decade ago
 - **Fast** — uses Apple's [swift-markdown](https://github.com/swiftlang/swift-markdown) (cmark-gfm) for native-speed parsing
 
 ## Requirements
