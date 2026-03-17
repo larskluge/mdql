@@ -8,6 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build all targets
 xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' build
 
+# Install to /Applications (ALWAYS do this after building)
+# Prevents duplicate QuickLook extension registrations from DerivedData vs /Applications
+rm -rf /Applications/mdql.app && cp -R "$(xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR' | awk '{print $3}')/mdql.app" /Applications/mdql.app && qlmanage -r
+
+# Build + install + reset QuickLook (one-liner)
+xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' build && rm -rf /Applications/mdql.app && cp -R "$(xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR' | awk '{print $3}')/mdql.app" /Applications/mdql.app && qlmanage -r
+
 # Run all tests
 xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' test
 
@@ -15,12 +22,11 @@ xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' te
 xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' \
   -only-testing:mdqlTests/MarkdownRendererTests/testRenderBasicMarkdown test
 
-# Reset QuickLook cache (if extension doesn't appear after install)
-qlmanage -r
-
 # Manual preview test
 qlmanage -p /path/to/file.md
 ```
+
+**IMPORTANT:** Always install to `/Applications/mdql.app` after building, never run from DerivedData. macOS registers QuickLook extensions per-path, so having copies in both DerivedData and `/Applications` causes duplicate registrations and unpredictable behavior. The build+install one-liner above handles this correctly.
 
 ## Architecture
 
