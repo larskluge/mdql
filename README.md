@@ -7,7 +7,7 @@ A macOS Quick Look extension for previewing Markdown files. Press Space on any `
 - **Live preview** — edit a Markdown file and watch the QuickLook preview update in real-time
 - **GitHub Flavored Markdown** — tables, task lists, strikethrough, fenced code blocks with language hints
 - **Light & dark mode** — automatically follows system appearance
-- **Inkpad-inspired styling** — clean typography with thoughtful spacing and color tokens
+- **Inkpad-inspired styling** — clean typography with thoughtful spacing and color tokens. Big shout out to Mariusz and Matt for the epic work together on [Inkpad](https://github.com/nicothin/inkpad) nearly a decade ago
 - **Fast** — uses Apple's [swift-markdown](https://github.com/swiftlang/swift-markdown) (cmark-gfm) for native-speed parsing
 
 ## Requirements
@@ -17,6 +17,7 @@ A macOS Quick Look extension for previewing Markdown files. Press Space on any `
 
 ## Todo
 
+- [ ] **Faithful Inkpad styling** — Audit the current CSS against the original Inkpad design and bring any missing or divergent styles closer to the source. Some elements (blockquotes, nested lists, code blocks) may need refinement to fully match Inkpad's look and feel.
 - [ ] **Incremental DOM updates** — Currently, every file change replaces the entire `.markdown-body` innerHTML. This works but is wasteful: a single-character edit re-renders and re-injects the full document HTML. Instead, diff the old and new rendered HTML and patch only the changed DOM nodes. This would reduce flicker on large documents, preserve any in-page state (e.g., text selection), and improve performance for files with hundreds of sections. Changed elements should briefly highlight (e.g., a subtle flash or background pulse) so the user can instantly see what updated in the preview.
 
 ## Install
