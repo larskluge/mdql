@@ -18,12 +18,9 @@ A macOS Quick Look extension for previewing Markdown files. Press Space on any `
 
 1. Open `mdql.xcodeproj` in Xcode
 2. Build & Run (Cmd+R)
-3. Copy the built app to `~/Applications`:
-   ```bash
-   cp -R ~/Library/Developer/Xcode/DerivedData/mdql-*/Build/Products/Debug/mdql.app ~/Applications/mdql.app
-   qlmanage -r
-   ```
-4. Press Space on any `.md` file in Finder
+3. Press Space on any `.md` file in Finder
+
+The build automatically installs the app to `~/Applications/`, registers the QuickLook extension, and cleans up any duplicate registrations. No manual steps needed.
 
 ## Build
 
@@ -116,11 +113,10 @@ Finder's QuickLook **only reliably discovers extensions** from apps installed in
 - Multiple DerivedData copies create duplicate extension registrations
 - Duplicate registrations cause `key cannot be nil` crashes in `ExtensionFoundation`
 
-After every build, copy to `~/Applications` and reset the QuickLook cache:
-```bash
-cp -R ~/Library/Developer/Xcode/DerivedData/mdql-*/Build/Products/Debug/mdql.app ~/Applications/mdql.app
-qlmanage -r
-```
+This is handled automatically by a post-build script and AppDelegate startup check:
+
+- **Post-build script** — Copies the app to `~/Applications/`, unregisters the DerivedData copy, registers from `~/Applications/`, resets QuickLook, and verifies no duplicate registrations exist.
+- **AppDelegate** — On every launch, queries `pluginkit` for duplicate registrations and cleans up any stale DerivedData entries.
 
 ### Cross-target bundle resolution
 

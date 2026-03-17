@@ -60,6 +60,23 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D10000100000000000000010 /* Install & Register QuickLook Extension */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Install & Register QuickLook Extension";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "# Skip on CI or when running tests\nif [ \"$CI\" = \"true\" ] || [ \"$ACTION\" = \"test\" ]; then\n    echo \"Skipping QuickLook registration (CI or test run)\"\n    exit 0\nfi\n\nset -euo pipefail\n\nAPP_NAME=\"mdql.app\"\nINSTALL_DIR=\"$HOME/Applications\"\nBUNDLE_ID=\"com.mdql.app.preview\"\nLSREGISTER=\"/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister\"\n\n# 1. Unregister the DerivedData build to prevent duplicate registrations\n\"$LSREGISTER\" -u \"$BUILT_PRODUCTS_DIR/$APP_NAME\" 2>/dev/null || true\n\n# 2. Install to ~/Applications and re-sign\nmkdir -p \"$INSTALL_DIR\"\nrm -rf \"$INSTALL_DIR/$APP_NAME\"\ncp -R \"$BUILT_PRODUCTS_DIR/$APP_NAME\" \"$INSTALL_DIR/$APP_NAME\"\ncodesign --force --sign - \"$INSTALL_DIR/$APP_NAME\" 2>/dev/null || true\necho \"Installed $APP_NAME to $INSTALL_DIR\"\n\n# 3. Register from ~/Applications\n\"$LSREGISTER\" -f -R \"$INSTALL_DIR/$APP_NAME\"\necho \"Registered $INSTALL_DIR/$APP_NAME\"\n\n# 4. Reset QuickLook\nqlmanage -r 2>/dev/null || true\n\n# 5. Verify registration and clean up duplicates\nREG_OUTPUT=$(pluginkit -m -v -A -i \"$BUNDLE_ID\" 2>/dev/null || true)\nREG_COUNT=$(echo \"$REG_OUTPUT\" | grep -c \"$BUNDLE_ID\" || true)\n\nif [ \"$REG_COUNT\" -gt 1 ]; then\n    echo \"warning: $REG_COUNT duplicate registrations found, cleaning up...\"\n    echo \"$REG_OUTPUT\"\n    # Unregister all paths that aren't ~/Applications\n    echo \"$REG_OUTPUT\" | grep \"$BUNDLE_ID\" | while read -r line; do\n        REG_PATH=$(echo \"$line\" | sed 's/.*\\t//')\n        if [ \"$REG_PATH\" != \"$INSTALL_DIR/$APP_NAME/Contents/PlugIns/mdqlPreview.appex\" ]; then\n            APP_PATH=$(echo \"$REG_PATH\" | sed 's|/Contents/PlugIns/.*||')\n            echo \"Unregistering stale: $APP_PATH\"\n            \"$LSREGISTER\" -u \"$APP_PATH\" 2>/dev/null || true\n        fi\n    done\n    \"$LSREGISTER\" -f -R \"$INSTALL_DIR/$APP_NAME\"\n    qlmanage -r 2>/dev/null || true\nfi\n\nif echo \"$REG_OUTPUT\" | grep -q \"DerivedData\"; then\n    echo \"warning: Extension registered from DerivedData, fixing...\"\n    \"$LSREGISTER\" -f -R \"$INSTALL_DIR/$APP_NAME\"\n    qlmanage -r 2>/dev/null || true\nfi\n\necho \"QuickLook extension ready\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXFileReference section */
 		A20000010000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A20000020000000000000002 /* PreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewController.swift; sourceTree = "<group>"; };
@@ -203,6 +220,7 @@
 				A80000010000000000000001 /* Frameworks */,
 				B20000040000000000000004 /* Resources */,
 				A70000010000000000000001 /* Embed Foundation Extensions */,
+				D10000100000000000000010 /* Install & Register QuickLook Extension */,
 			);
 			buildRules = (
 			);
@@ -497,6 +515,7 @@
 				CODE_SIGN_ENTITLEMENTS = mdql/mdql.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = mdql/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -514,6 +533,7 @@
 				CODE_SIGN_ENTITLEMENTS = mdql/mdql.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = mdql/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

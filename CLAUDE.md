@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test Commands
 
 ```bash
-# Build all targets
+# Build all targets (automatically installs to ~/Applications and registers the QL extension)
 xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' build
 
 # Run all tests
@@ -15,21 +15,17 @@ xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' te
 xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' \
   -only-testing:mdqlTests/MarkdownRendererTests/testRenderBasicMarkdown test
 
-# Install to ~/Applications (REQUIRED after every build for Finder QuickLook to work)
-cp -R ~/Library/Developer/Xcode/DerivedData/mdql-*/Build/Products/Debug/mdql.app ~/Applications/mdql.app
-qlmanage -r
-
 # Manual preview test
 qlmanage -p /path/to/file.md
 ```
 
-**IMPORTANT:** Always install the built app to `~/Applications/` after building. Finder's QuickLook only reliably discovers extensions from apps in `/Applications` or `~/Applications`, not from DerivedData. Without this step, pressing Space in Finder will show a file icon instead of the rendered preview. Multiple copies in DerivedData can also cause duplicate extension registrations and crashes.
+The build includes a post-build script that automatically copies the app to `~/Applications/`, registers the QuickLook extension from the correct path, and cleans up any duplicate registrations. No manual install step needed.
 
 ## Architecture
 
 macOS QuickLook preview extension for Markdown files. Three Xcode targets:
 
-- **mdql** — Minimal host app (required to carry the extension; does nothing itself)
+- **mdql** — Host app. On launch, verifies QuickLook extension registration and cleans up duplicates. Post-build script auto-installs to `~/Applications/`.
 - **mdqlPreview** — QuickLook Preview Extension (.appex). View-based preview (`QLIsDataBasedPreview=false`) using legacy `WebView` + FileWatcher for live updates in Finder. Registered for `net.daringfireball.markdown` UTI.
 - **mdqlTests** — Unit tests. Compiles mdqlPreview and mdql sources directly (not hosted tests) since app extensions can't be imported as modules by test bundles.
 
@@ -60,4 +56,6 @@ macOS QuickLook preview extension for Markdown files. Three Xcode targets:
 - **`@main` on NSApplicationDelegate doesn't wire up the delegate.** Must use an explicit `@main enum Main` that creates `NSApplication.shared`, sets the delegate, and calls `app.run()`.
 - **JavaScript `atob()` produces Latin-1, not UTF-8.** Multi-byte UTF-8 characters (em-dashes, etc.) get mangled. Fix: `new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)))`.
 - **`Bundle(for: PreviewController.self)` fails cross-target.** When MarkdownRenderer is compiled into multiple targets, the class reference resolves to the wrong bundle. Fix: private `BundleAnchor` class in the same file as the bundle lookup.
-- **Finder only discovers QL extensions from ~/Applications or /Applications.** DerivedData builds don't register reliably, causing "file icon only" preview. Multiple DerivedData copies cause duplicate registrations and crashes.
+- **Finder only discovers QL extensions from ~/Applications or /Applications.** DerivedData builds don't register reliably, causing "file icon only" preview. Multiple DerivedData copies cause duplicate registrations and crashes. Automated via post-build script and AppDelegate cleanup.
+- **Xcode's RegisterWithLaunchServices re-registers from DerivedData after build scripts run.** The AppDelegate must also verify registration on launch to ensure the canonical ~/Applications path wins. The post-build script alone is not sufficient.
+- **`codesign --force --deep` breaks extension identity.** When re-signing the host app after copying to ~/Applications, use `--sign -` without `--deep` to preserve the extension's original signature.
