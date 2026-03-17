@@ -29,23 +29,19 @@ qlmanage -p /path/to/file.md
 
 macOS QuickLook preview extension for Markdown files. Three Xcode targets:
 
-- **mdql** — Host app with live Markdown preview (WKWebView + FileWatcher). Also carries the QuickLook extension.
+- **mdql** — Minimal host app (required to carry the extension; does nothing itself)
 - **mdqlPreview** — QuickLook Preview Extension (.appex). View-based preview (`QLIsDataBasedPreview=false`) using legacy `WebView` + FileWatcher for live updates in Finder. Registered for `net.daringfireball.markdown` UTI.
 - **mdqlTests** — Unit tests. Compiles mdqlPreview and mdql sources directly (not hosted tests) since app extensions can't be imported as modules by test bundles.
 
-**QuickLook data flow:** Finder Space → `PreviewController.preparePreviewOfFile(at:)` → `MarkdownRenderer.render(fileAt:)` → legacy `WebView.mainFrame.loadHTMLString()`. FileWatcher triggers innerHTML injection via `stringByEvaluatingJavaScript(from:)`.
+**Data flow:** Finder Space → `PreviewController.preparePreviewOfFile(at:)` → `MarkdownRenderer.render(fileAt:)` → legacy `WebView.mainFrame.loadHTMLString()`. FileWatcher triggers innerHTML injection via `stringByEvaluatingJavaScript(from:)`.
 
-**Host app data flow:** `AppDelegate` → `PreviewWindowController.loadFile()` → `MarkdownRenderer.render(fileAt:)` → WKWebView. FileWatcher triggers innerHTML injection via `evaluateJavaScript()`.
-
-**Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, branch: main) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Added to mdql, mdqlPreview, and mdqlTests targets.
+**Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, branch: main) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Added to mdqlPreview and mdqlTests targets.
 
 ## Key Files
 
 - `mdqlPreview/MarkdownRenderer.swift` — Core rendering. `render()` for full HTML with CSS, `renderBody()` for body-only HTML (used by innerHTML updates). Uses `BundleAnchor` class for cross-target bundle resolution.
 - `mdqlPreview/Resources/preview.css` — Inkpad-derived design tokens. Uses CSS custom properties with `@media (prefers-color-scheme: dark)` for automatic dark mode. Key tokens: text `#3f3b3d`, bg `#f9f9f9`, links `#4183c4`.
 - `mdqlPreview/PreviewController.swift` — View-based QLPreviewingController with legacy WebView + FileWatcher for live updates.
-- `mdql/AppDelegate.swift` — Host app entry point. Programmatic menu, CLI args, File > Open, drag-and-drop. Uses explicit `@main` enum because `@main` on NSApplicationDelegate alone doesn't wire up the delegate.
-- `mdql/PreviewWindowController.swift` — WKWebView-based preview with scroll-preserving innerHTML updates.
 - `mdql/FileWatcher.swift` — DispatchSource file monitor with rename/delete recovery and 100ms coalescing.
 - `mdqlTests/Fixtures/` — Test markdown files (basic, gfm, empty, special-chars).
 
@@ -53,7 +49,7 @@ macOS QuickLook preview extension for Markdown files. Three Xcode targets:
 
 - Xcode project (not SPM) because Quick Look extensions require `.appex` embedded in `.app`
 - Deployment target: macOS 12.0
-- Host app sandbox disabled (needs file access + WKWebView); extension sandboxed with read-only file access
+- App sandbox enabled on both host app and extension; extension has read-only file access
 - CSS is loaded from the bundle at runtime via `Bundle(for: BundleAnchor.self)`
 
 ## Learnings
