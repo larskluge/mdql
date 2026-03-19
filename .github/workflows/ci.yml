@@ -7,13 +7,14 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    runs-on: macos-15
+  build-and-test:
+    runs-on: macos-latest
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Build
-        run: xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' build
+        run: xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS" | xcpretty || xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS"
 
-      - name: Test
-        run: xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' test
+      - name: Run tests
+        run: xcodebuild test -project mdql.xcodeproj -scheme mdqlTests -destination "platform=macOS" | xcpretty || xcodebuild test -project mdql.xcodeproj -scheme mdqlTests -destination "platform=macOS"
