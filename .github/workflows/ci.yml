@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build
         run: xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS" | xcpretty || xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS"
