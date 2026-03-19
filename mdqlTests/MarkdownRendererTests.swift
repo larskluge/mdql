@@ -192,6 +192,122 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("line-height:"), "CSS should contain line-height rule")
     }
 
+    // MARK: - Front Matter
+
+    func testFrontMatterParsed() {
+        let md = """
+        ---
+        title: Hello
+        author: Lars
+        ---
+
+        # Body
+        """
+        let (pairs, body) = MarkdownRenderer.parseFrontMatter(md)
+        XCTAssertEqual(pairs.count, 2)
+        XCTAssertEqual(pairs[0].0, "author", "Fields should be sorted alphabetically")
+        XCTAssertEqual(pairs[0].1, "Lars")
+        XCTAssertEqual(pairs[1].0, "title")
+        XCTAssertEqual(pairs[1].1, "Hello")
+        XCTAssertTrue(body.contains("# Body"), "Body should contain markdown after front matter")
+        XCTAssertFalse(body.contains("---"), "Body should not contain front matter delimiters")
+    }
+
+    func testFrontMatterRenderedAsHTML() {
+        let md = """
+        ---
+        title: My Document
+        author: Lars
+        date: 2026-03-18
+        draft: false
+        ---
+
+        # Hello
+        """
+        let html = MarkdownRenderer.render(markdown: md)
+        XCTAssertTrue(html.contains("class=\"front-matter\""), "Should contain front-matter div")
+        XCTAssertTrue(html.contains("author:"), "Should contain author field")
+        XCTAssertTrue(html.contains("·"), "Should contain separator between fields")
+        // Verify alphabetical order: author, date, draft, title
+        let fmRange = html.range(of: "class=\"front-matter\"")!
+        let afterFM = html[fmRange.upperBound...]
+        let authorPos = afterFM.range(of: "author:")!.lowerBound
+        let datePos = afterFM.range(of: "date:")!.lowerBound
+        let draftPos = afterFM.range(of: "draft:")!.lowerBound
+        let titlePos = afterFM.range(of: "title:")!.lowerBound
+        XCTAssertTrue(authorPos < datePos, "author should come before date")
+        XCTAssertTrue(datePos < draftPos, "date should come before draft")
+        XCTAssertTrue(draftPos < titlePos, "draft should come before title")
+    }
+
+    func testFrontMatterStrippedFromBody() {
+        let md = """
+        ---
+        title: Test
+        ---
+
+        # Content
+        """
+        let html = MarkdownRenderer.render(markdown: md)
+        XCTAssertTrue(html.contains("<h1>"), "Body content should still render")
+        // The raw front matter text should not appear as markdown content
+        let bodyHTML = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertFalse(bodyHTML.contains("<hr"), "Front matter should not produce a horizontal rule")
+    }
+
+    func testNoFrontMatter() {
+        let md = "# Just a heading\n\nNo front matter here."
+        let (pairs, body) = MarkdownRenderer.parseFrontMatter(md)
+        XCTAssertTrue(pairs.isEmpty, "No pairs when no front matter")
+        XCTAssertEqual(body, md, "Body should be unchanged")
+    }
+
+    func testFrontMatterNotClosedReturnsNoPairs() {
+        let md = """
+        ---
+        title: Broken
+
+        # Body starts here
+        """
+        let (pairs, body) = MarkdownRenderer.parseFrontMatter(md)
+        XCTAssertTrue(pairs.isEmpty, "Unclosed front matter should return no pairs")
+        XCTAssertEqual(body, md, "Body should be unchanged for unclosed front matter")
+    }
+
+    func testFrontMatterEscapesHTML() {
+        let md = """
+        ---
+        title: <script>alert('xss')</script>
+        ---
+
+        # Safe
+        """
+        let html = MarkdownRenderer.render(markdown: md)
+        XCTAssertTrue(html.contains("&lt;script&gt;"), "Front matter values should be HTML-escaped")
+        XCTAssertFalse(html.contains("<script>alert"), "Should not contain raw script tag in front matter")
+    }
+
+    func testRenderBodyIncludesFrontMatter() {
+        let md = """
+        ---
+        title: Live Update
+        ---
+
+        # Content
+        """
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(body.contains("class=\"front-matter\""), "renderBody should include front matter")
+        XCTAssertTrue(body.contains("<h1>"), "renderBody should include body content")
+    }
+
+    func testFrontMatterFromFixtureFile() throws {
+        let url = fixtureURL("front-matter")
+        let html = try MarkdownRenderer.render(fileAt: url)
+        XCTAssertTrue(html.contains("class=\"front-matter\""), "Fixture file should render front matter")
+        XCTAssertTrue(html.contains("author:"), "Should contain author from fixture")
+        XCTAssertTrue(html.contains("<h1>"), "Should render body from fixture")
+    }
+
     // MARK: - Title from file path
 
     func testTitleFromFilePath() throws {

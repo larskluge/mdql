@@ -44,6 +44,26 @@ body {
     margin-top: 0;
 }
 
+.front-matter {
+    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 0.8em;
+    color: var(--blockquote-border);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+    margin-bottom: 1.5em;
+    line-height: 1.6;
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.front-matter .fm-key {
+    font-weight: 600;
+}
+
+.front-matter .fm-sep {
+    margin: 0 0.3em;
+}
+
 h1, h2, h3, h4, h5, h6 {
     font-weight: 700;
     line-height: 1.25;
