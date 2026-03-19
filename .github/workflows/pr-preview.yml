@@ -1,0 +1,98 @@
+name: PR QuickLook Preview
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  quicklook-preview:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build mdql (Release)
+        run: |
+          xcodebuild \
+            -project mdql.xcodeproj \
+            -scheme mdql \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            build 2>&1 | tail -5
+
+      - name: Install QuickLook extension
+        run: |
+          BUILT=$(xcodebuild -project mdql.xcodeproj -scheme mdql -configuration Release \
+            -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR' | awk '{print $NF}')
+          echo "Built products dir: $BUILT"
+          mkdir -p ~/Library/QuickLook
+          cp -r "$BUILT/mdql.qlgenerator" ~/Library/QuickLook/
+          qlmanage -r
+          sleep 2
+          qlmanage -r info ~/Library/QuickLook/mdql.qlgenerator
+
+      - name: Generate QuickLook screenshot
+        run: |
+          mkdir -p /tmp/ql-preview
+          # Use the front-matter fixture if it exists, otherwise use a test file
+          if [ -f "mdqlTests/Fixtures/front-matter.md" ]; then
+            PREVIEW_FILE="mdqlTests/Fixtures/front-matter.md"
+          else
+            cat > /tmp/preview-sample.md << 'EOF'
+          ---
+          author: Lars
+          date: 2026-03-18
+          draft: false
+          title: My Document
+          ---
+
+          # Hello World
+
+          This document has front matter.
+          EOF
+            PREVIEW_FILE="/tmp/preview-sample.md"
+          fi
+          qlmanage -t -s 1200 -o /tmp/ql-preview "$PREVIEW_FILE"
+          # qlmanage outputs as filename.ext.png
+          ls /tmp/ql-preview/
+
+      - name: Copy screenshot to repo
+        run: |
+          mkdir -p assets/screenshots
+          SHOT=$(ls /tmp/ql-preview/*.png 2>/dev/null | head -1)
+          if [ -n "$SHOT" ]; then
+            cp "$SHOT" assets/screenshots/pr-preview.png
+            echo "Screenshot saved"
+          else
+            echo "No screenshot generated"
+            exit 1
+          fi
+
+      - name: Commit screenshot to PR branch
+        run: |
+          git config user.name "Lars"
+          git config user.email "l@larskluge.com"
+          git add assets/screenshots/pr-preview.png
+          git diff --staged --quiet || git commit -m "ci: update QuickLook preview screenshot [skip ci]"
+          git push
+
+      - name: Comment on PR with screenshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          REPO="${{ github.repository }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          IMAGE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/assets/screenshots/pr-preview.png"
+          gh pr comment "$PR_NUMBER" --body "## QuickLook Preview
+
+          ![QuickLook Preview](${IMAGE_URL})
+
+          *Auto-generated from the QuickLook extension build on this PR.*"
