@@ -5,6 +5,7 @@
 // Usage: node scripts/screenshot.js <input.md> <output.png> [width] [height]
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 async function main() {
@@ -60,29 +61,37 @@ ${frontMatterHTML}${bodyHTML}
 </body>
 </html>`;
 
+  // Write HTML to a temp file and use page.goto(file://) to avoid setContent timeout
+  const tmpHtml = path.join(os.tmpdir(), `mdql-preview-${Date.now()}.html`);
+  fs.writeFileSync(tmpHtml, html, "utf-8");
+
   // Screenshot with puppeteer
   const puppeteer = require("puppeteer");
   const browser = await puppeteer.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
   });
-  const page = await browser.newPage();
-  await page.setViewport({ width, height, deviceScaleFactor: 2 });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width, height, deviceScaleFactor: 2 });
 
-  // Force light mode (matches the default QuickLook appearance)
-  await page.emulateMediaFeatures([
-    { name: "prefers-color-scheme", value: "light" },
-  ]);
+    // Force light mode (matches the default QuickLook appearance)
+    await page.emulateMediaFeatures([
+      { name: "prefers-color-scheme", value: "light" },
+    ]);
 
-  await page.setContent(html, { waitUntil: "networkidle0" });
+    // Use file:// URL instead of setContent — avoids navigation timeout on CI
+    await page.goto(`file://${tmpHtml}`, { waitUntil: "load", timeout: 60000 });
 
-  // Ensure output directory exists
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    // Ensure output directory exists
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
-  await page.screenshot({ path: outPath, type: "png" });
-  await browser.close();
-
-  console.log(`Screenshot saved to ${outPath} (${width}x${height}@2x)`);
+    await page.screenshot({ path: outPath, type: "png" });
+    console.log(`Screenshot saved to ${outPath} (${width}x${height}@2x)`);
+  } finally {
+    await browser.close();
+    fs.unlinkSync(tmpHtml);
+  }
 }
 
 function parseFrontMatter(markdown) {
