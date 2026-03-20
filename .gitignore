@@ -3,3 +3,4 @@ project.xcworkspace/
 DerivedData/
 .build/
 default.profraw
+.claude/
