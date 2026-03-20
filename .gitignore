@@ -3,3 +3,6 @@ project.xcworkspace/
 DerivedData/
 .build/
 default.profraw
+node_modules/
+package.json
+package-lock.json
