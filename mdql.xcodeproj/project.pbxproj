@@ -29,6 +29,11 @@
 		D1000000000000000000000C /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* FileWatcher.swift */; };
 		D1000000000000000000000D /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
 		E10000020000000000000002 /* PreviewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000020000000000000002 /* PreviewControllerTests.swift */; };
+		G10000010000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* main.swift */; };
+		G10000020000000000000002 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		G10000030000000000000003 /* preview.css in CopyFiles */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
+		G10000040000000000000004 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = G70000010000000000000001 /* Markdown */; };
+		G10000050000000000000005 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +63,16 @@
 				A10000060000000000000006 /* mdqlPreview.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		G80000030000000000000003 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				G10000030000000000000003 /* preview.css in CopyFiles */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -101,6 +116,8 @@
 		D20000030000000000000003 /* FileWatcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileWatcherTests.swift; sourceTree = "<group>"; };
 		D20000050000000000000005 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		E20000020000000000000002 /* PreviewControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewControllerTests.swift; sourceTree = "<group>"; };
+		G20000010000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		G30000010000000000000001 /* mdql-screenshot */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "mdql-screenshot"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -117,6 +134,15 @@
 			files = (
 				A1000000000000000000000B /* Markdown in Frameworks */,
 				D1000000000000000000000D /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		G80000020000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				G10000040000000000000004 /* Markdown in Frameworks */,
+				G10000050000000000000005 /* WebKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,8 +218,17 @@
 				A30000010000000000000001 /* mdql.app */,
 				A30000020000000000000002 /* mdqlPreview.appex */,
 				A30000030000000000000003 /* mdqlTests.xctest */,
+				G30000010000000000000001 /* mdql-screenshot */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		G90000010000000000000001 /* mdql-screenshot */ = {
+			isa = PBXGroup;
+			children = (
+				G20000010000000000000001 /* main.swift */,
+			);
+			path = "mdql-screenshot";
 			sourceTree = "<group>";
 		};
 		D90000010000000000000001 /* Frameworks */ = {
@@ -210,6 +245,7 @@
 				A90000010000000000000001 /* mdql */,
 				A90000020000000000000002 /* mdqlPreview */,
 				A90000030000000000000003 /* mdqlTests */,
+				G90000010000000000000001 /* mdql-screenshot */,
 				D90000010000000000000001 /* Frameworks */,
 				A90000060000000000000006 /* Products */,
 			);
@@ -281,6 +317,26 @@
 			productReference = A30000030000000000000003 /* mdqlTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		G40000010000000000000001 /* mdql-screenshot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = G60000010000000000000001 /* Build configuration list for PBXNativeTarget "mdql-screenshot" */;
+			buildPhases = (
+				G80000010000000000000001 /* Sources */,
+				G80000020000000000000002 /* Frameworks */,
+				G80000030000000000000003 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "mdql-screenshot";
+			packageProductDependencies = (
+				G70000010000000000000001 /* Markdown */,
+			);
+			productName = "mdql-screenshot";
+			productReference = G30000010000000000000001 /* mdql-screenshot */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -300,6 +356,9 @@
 					B10000030000000000000003 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = B10000010000000000000001;
+					};
+					G40000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
@@ -322,6 +381,7 @@
 				B10000010000000000000001 /* mdql */,
 				B10000020000000000000002 /* mdqlPreview */,
 				B10000030000000000000003 /* mdqlTests */,
+				G40000010000000000000001 /* mdql-screenshot */,
 			);
 		};
 /* End PBXProject section */
@@ -386,6 +446,15 @@
 				D10000070000000000000007 /* FileWatcherTests.swift in Sources */,
 				D10000090000000000000009 /* FileWatcher.swift in Sources */,
 				E10000020000000000000002 /* PreviewControllerTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		G80000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				G10000010000000000000001 /* main.swift in Sources */,
+				G10000020000000000000002 /* MarkdownRenderer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -627,6 +696,26 @@
 			};
 			name = Release;
 		};
+		G50000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		G50000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -666,6 +755,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		G60000010000000000000001 /* Build configuration list for PBXNativeTarget "mdql-screenshot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				G50000010000000000000001 /* Debug */,
+				G50000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -686,6 +784,11 @@
 			productName = Markdown;
 		};
 		A5000002000000000000000B /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+		G70000010000000000000001 /* Markdown */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */;
 			productName = Markdown;
