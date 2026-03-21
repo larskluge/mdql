@@ -78,7 +78,7 @@ final class MarkdownRendererTests: XCTestCase {
         let html = MarkdownRenderer.render(markdown: "# Test")
         XCTAssertTrue(html.hasPrefix("<!DOCTYPE html>"), "Should start with DOCTYPE")
         XCTAssertTrue(html.contains("<style>"), "Should contain style tag")
-        XCTAssertTrue(html.contains("<article class=\"markdown-body\">"), "Should contain markdown-body article")
+        XCTAssertTrue(html.contains("class=\"markdown-body\""), "Should contain markdown-body article")
     }
 
     func testTitleEscaping() {
@@ -90,7 +90,15 @@ final class MarkdownRendererTests: XCTestCase {
     func testEmptyFile() {
         let html = MarkdownRenderer.render(markdown: "")
         XCTAssertTrue(html.hasPrefix("<!DOCTYPE html>"), "Empty input should still produce valid HTML")
-        XCTAssertTrue(html.contains("<article class=\"markdown-body\">"), "Should contain article wrapper")
+        XCTAssertTrue(html.contains("class=\"markdown-body\""), "Should contain article wrapper")
+    }
+
+    func testLoadingSpinner() {
+        let html = MarkdownRenderer.render(markdown: "# Hello")
+        XCTAssertTrue(html.contains("id=\"mdql-loading\""), "Should contain loading spinner element")
+        XCTAssertTrue(html.contains("mdql-spin"), "Should contain spinner animation")
+        XCTAssertTrue(html.contains("display:none"), "Content should be hidden initially")
+        XCTAssertTrue(html.contains("getElementById('mdql-loading')"), "JS should remove spinner on load")
     }
 
     // MARK: - CSS

@@ -34,6 +34,13 @@
 		G10000030000000000000003 /* preview.css in CopyFiles */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
 		G10000040000000000000004 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = G70000010000000000000001 /* Markdown */; };
 		G10000050000000000000005 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
+		H10000010000000000000001 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
+		H10000020000000000000002 /* OpenURLService.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000020000000000000002 /* OpenURLService.swift */; };
+		H10000030000000000000003 /* OpenURLDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000030000000000000003 /* OpenURLDelegate.swift */; };
+		H10000040000000000000004 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000040000000000000004 /* main.swift */; };
+		H10000050000000000000005 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
+		H10000060000000000000006 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
+		H10000070000000000000007 /* com.mdql.app.open-url.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = H30000010000000000000001 /* com.mdql.app.open-url.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +57,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = B10000020000000000000002;
 			remoteInfo = mdqlPreview;
+		};
+		H40000020000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = H40000010000000000000001;
+			remoteInfo = "mdql-open-url";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -75,6 +89,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		H70000010000000000000001 /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				H10000070000000000000007 /* com.mdql.app.open-url.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -91,6 +116,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
 			shellScript = "# Skip on CI or when running tests\nif [ \"$CI\" = \"true\" ] || [ \"$ACTION\" = \"test\" ]; then\n    echo \"Skipping QuickLook registration (CI or test run)\"\n    exit 0\nfi\n\n# Cannot launch apps during build, so skip the app launch step\nSKIP_LAUNCH=1 exec \"$SOURCE_ROOT/scripts/install.sh\" \"$BUILT_PRODUCTS_DIR\"\n";
+		};
+		H10000080000000000000008 /* Generate version.txt */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Generate version.txt";
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/version.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "cd \"$SOURCE_ROOT\"\nHASH=$(git rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nDIRTY=$(git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null || echo \"-dirty\")\necho \"${HASH}${DIRTY}\" > \"$DERIVED_FILE_DIR/version.txt\"\ncp \"$DERIVED_FILE_DIR/version.txt\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/version.txt\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -118,6 +158,12 @@
 		E20000020000000000000002 /* PreviewControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewControllerTests.swift; sourceTree = "<group>"; };
 		G20000010000000000000001 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		G30000010000000000000001 /* mdql-screenshot */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "mdql-screenshot"; sourceTree = BUILT_PRODUCTS_DIR; };
+		H20000010000000000000001 /* OpenURLProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenURLProtocol.swift; sourceTree = "<group>"; };
+		H20000020000000000000002 /* OpenURLService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenURLService.swift; sourceTree = "<group>"; };
+		H20000030000000000000003 /* OpenURLDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenURLDelegate.swift; sourceTree = "<group>"; };
+		H20000040000000000000004 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		H20000050000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		H30000010000000000000001 /* com.mdql.app.open-url.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = "com.mdql.app.open-url.xpc"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -152,6 +198,13 @@
 			files = (
 				A1000000000000000000000F /* Markdown in Frameworks */,
 				D1000000000000000000000B /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		H80000020000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -219,6 +272,7 @@
 				A30000020000000000000002 /* mdqlPreview.appex */,
 				A30000030000000000000003 /* mdqlTests.xctest */,
 				G30000010000000000000001 /* mdql-screenshot */,
+				H30000010000000000000001 /* com.mdql.app.open-url.xpc */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -229,6 +283,18 @@
 				G20000010000000000000001 /* main.swift */,
 			);
 			path = "mdql-screenshot";
+			sourceTree = "<group>";
+		};
+		H90000010000000000000001 /* mdql-open-url */ = {
+			isa = PBXGroup;
+			children = (
+				H20000010000000000000001 /* OpenURLProtocol.swift */,
+				H20000020000000000000002 /* OpenURLService.swift */,
+				H20000030000000000000003 /* OpenURLDelegate.swift */,
+				H20000040000000000000004 /* main.swift */,
+				H20000050000000000000005 /* Info.plist */,
+			);
+			path = "mdql-open-url";
 			sourceTree = "<group>";
 		};
 		D90000010000000000000001 /* Frameworks */ = {
@@ -246,6 +312,7 @@
 				A90000020000000000000002 /* mdqlPreview */,
 				A90000030000000000000003 /* mdqlTests */,
 				G90000010000000000000001 /* mdql-screenshot */,
+				H90000010000000000000001 /* mdql-open-url */,
 				D90000010000000000000001 /* Frameworks */,
 				A90000060000000000000006 /* Products */,
 			);
@@ -280,13 +347,16 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B30000020000000000000002 /* Build configuration list for PBXNativeTarget "mdqlPreview" */;
 			buildPhases = (
+				H10000080000000000000008 /* Generate version.txt */,
 				B20000020000000000000002 /* Sources */,
 				A80000020000000000000002 /* Frameworks */,
 				B20000050000000000000005 /* Resources */,
+				H70000010000000000000001 /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				H40000030000000000000003 /* PBXTargetDependency */,
 			);
 			name = mdqlPreview;
 			packageProductDependencies = (
@@ -337,6 +407,22 @@
 			productReference = G30000010000000000000001 /* mdql-screenshot */;
 			productType = "com.apple.product-type.tool";
 		};
+		H40000010000000000000001 /* mdql-open-url */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = H60000010000000000000001 /* Build configuration list for PBXNativeTarget "mdql-open-url" */;
+			buildPhases = (
+				H80000010000000000000001 /* Sources */,
+				H80000020000000000000002 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "mdql-open-url";
+			productName = "mdql-open-url";
+			productReference = H30000010000000000000001 /* com.mdql.app.open-url.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -358,6 +444,9 @@
 						TestTargetID = B10000010000000000000001;
 					};
 					G40000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					H40000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -382,6 +471,7 @@
 				B10000020000000000000002 /* mdqlPreview */,
 				B10000030000000000000003 /* mdqlTests */,
 				G40000010000000000000001 /* mdql-screenshot */,
+				H40000010000000000000001 /* mdql-open-url */,
 			);
 		};
 /* End PBXProject section */
@@ -433,6 +523,7 @@
 				A10000020000000000000002 /* PreviewController.swift in Sources */,
 				A10000030000000000000003 /* MarkdownRenderer.swift in Sources */,
 				D1000000000000000000000C /* FileWatcher.swift in Sources */,
+				H10000050000000000000005 /* OpenURLProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -446,6 +537,7 @@
 				D10000070000000000000007 /* FileWatcherTests.swift in Sources */,
 				D10000090000000000000009 /* FileWatcher.swift in Sources */,
 				E10000020000000000000002 /* PreviewControllerTests.swift in Sources */,
+				H10000060000000000000006 /* OpenURLProtocol.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,6 +547,17 @@
 			files = (
 				G10000010000000000000001 /* main.swift in Sources */,
 				G10000020000000000000002 /* MarkdownRenderer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		H80000010000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				H10000010000000000000001 /* OpenURLProtocol.swift in Sources */,
+				H10000020000000000000002 /* OpenURLService.swift in Sources */,
+				H10000030000000000000003 /* OpenURLDelegate.swift in Sources */,
+				H10000040000000000000004 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -470,6 +573,11 @@
 			isa = PBXTargetDependency;
 			target = B10000010000000000000001 /* mdql */;
 			targetProxy = A40000010000000000000001 /* PBXContainerItemProxy */;
+		};
+		H40000030000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = H40000010000000000000001 /* mdql-open-url */;
+			targetProxy = H40000020000000000000002 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -627,6 +735,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = mdqlPreview/mdqlPreview.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = mdqlPreview/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -645,6 +754,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = mdqlPreview/mdqlPreview.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = mdqlPreview/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -716,6 +826,32 @@
 			};
 			name = Release;
 		};
+		H50000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "mdql-open-url/Info.plist";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.mdql.app.open-url";
+				PRODUCT_NAME = "com.mdql.app.open-url";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		H50000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "mdql-open-url/Info.plist";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.mdql.app.open-url";
+				PRODUCT_NAME = "com.mdql.app.open-url";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -760,6 +896,15 @@
 			buildConfigurations = (
 				G50000010000000000000001 /* Debug */,
 				G50000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		H60000010000000000000001 /* Build configuration list for PBXNativeTarget "mdql-open-url" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				H50000010000000000000001 /* Debug */,
+				H50000020000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

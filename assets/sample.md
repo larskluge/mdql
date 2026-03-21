@@ -8,7 +8,7 @@ A **bold** statement with *italic flair* and ~~strikethrough~~. Here's `inline c
 
 ```swift
 let html = MarkdownRenderer.render(fileAt: url)
-webView.mainFrame.loadHTMLString(html, baseURL: nil)
+webView.loadHTMLString(html, baseURL: nil)
 ```
 
 | Feature | Status | Feature | Status |

@@ -23,39 +23,112 @@ final class PreviewControllerTests: XCTestCase {
                        "View frame must match previewSize")
     }
 
-    // MARK: - Link handling
-
-    func testFrameLoadDelegateIsSetAfterLoadView() {
+    func testViewIsWKWebView() {
         let controller = PreviewController()
         controller.loadView()
-        let webView = controller.view as? WebView
-        XCTAssertNotNil(webView?.frameLoadDelegate,
-                        "frameLoadDelegate must be set for JS bridge injection")
+        XCTAssertTrue(controller.view is WKWebView, "View must be a WKWebView")
     }
 
-    func testLinkBridgeCopiesURL() {
+    func testRenderedHTMLContainsMessageHandler() {
+        let html = MarkdownRenderer.render(markdown: "[test](https://example.com)", title: "t")
+        XCTAssertTrue(html.contains("window.webkit.messageHandlers.mdql.postMessage"),
+                      "HTML must contain WKWebView message handler call")
+        XCTAssertTrue(html.contains("__mdqlShowToast"), "HTML must contain toast notification")
+    }
+
+    func testRenderedHTMLContainsOpenURLAction() {
+        let html = MarkdownRenderer.render(markdown: "[test](https://example.com)", title: "t")
+        XCTAssertTrue(html.contains("action: \"openURL\""),
+                      "HTML must post openURL action to message handler")
+    }
+
+    // MARK: - URL opening via injectable handler
+
+    func testOpenURLCallbackIsInvoked() {
         let controller = PreviewController()
         controller.loadView()
 
-        var copiedURL: URL?
-        controller.copyURLToClipboard = { url in copiedURL = url }
+        let expectation = expectation(description: "openURL callback invoked")
+        var receivedURL: URL?
 
-        let webView = controller.view as! WebView
-        let html = MarkdownRenderer.render(markdown: "[link](https://example.com)", title: "t")
-        webView.mainFrame.loadHTMLString(html, baseURL: nil)
-
-        let expectation = XCTestExpectation(description: "bridge callable")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            webView.stringByEvaluatingJavaScript(from: "window.mdql.openURL('https://example.com')")
+        controller.openURL = { url in
+            receivedURL = url
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 2.0)
-        XCTAssertEqual(copiedURL?.absoluteString, "https://example.com")
+
+        controller.handleOpenURL("https://example.com", background: false)
+
+        waitForExpectations(timeout: 1)
+        XCTAssertEqual(receivedURL?.absoluteString, "https://example.com")
     }
 
-    func testRenderedHTMLContainsLinkScript() {
-        let html = MarkdownRenderer.render(markdown: "[test](https://example.com)", title: "t")
-        XCTAssertTrue(html.contains("window.mdql.openURL"), "HTML must contain JS bridge click handler")
-        XCTAssertTrue(html.contains("__mdqlShowToast"), "HTML must contain toast notification")
+    func testOpenURLWithBackgroundFlag() {
+        let controller = PreviewController()
+        controller.loadView()
+
+        let expectation = expectation(description: "openURL callback invoked")
+        var receivedURL: URL?
+
+        controller.openURL = { url in
+            receivedURL = url
+            expectation.fulfill()
+        }
+
+        controller.handleOpenURL("https://example.com/bg", background: true)
+
+        waitForExpectations(timeout: 1)
+        XCTAssertEqual(receivedURL?.absoluteString, "https://example.com/bg")
+    }
+
+    func testOpenURLIgnoresEmptyString() {
+        let controller = PreviewController()
+        controller.loadView()
+
+        var callbackInvoked = false
+        controller.openURL = { _ in
+            callbackInvoked = true
+        }
+
+        controller.handleOpenURL("", background: false)
+
+        XCTAssertFalse(callbackInvoked, "Should not invoke callback for empty URL")
+    }
+
+    func testOpenURLHandlesVariousSchemes() {
+        let controller = PreviewController()
+        controller.loadView()
+
+        var receivedURLs: [URL] = []
+        controller.openURL = { url in
+            receivedURLs.append(url)
+        }
+
+        controller.handleOpenURL("https://example.com", background: false)
+        controller.handleOpenURL("http://example.com", background: false)
+
+        XCTAssertEqual(receivedURLs.count, 2, "Should handle both http and https URLs")
+        XCTAssertEqual(receivedURLs[0].scheme, "https")
+        XCTAssertEqual(receivedURLs[1].scheme, "http")
+    }
+
+    // MARK: - XPC protocol
+
+    func testOpenURLProtocolConformance() {
+        // Verify the protocol can be used with NSXPCInterface (requires @objc)
+        let interface = NSXPCInterface(with: OpenURLProtocol.self)
+        XCTAssertNotNil(interface, "OpenURLProtocol must be usable with NSXPCInterface")
+    }
+
+    // MARK: - Version display
+
+    func testRenderedHTMLContainsVersion() {
+        let html = MarkdownRenderer.render(markdown: "test", title: "t")
+        XCTAssertTrue(html.contains("id=\"mdql-version\""), "HTML must contain version element")
+    }
+
+    func testVersionLoads() {
+        let version = MarkdownRenderer.loadVersion()
+        // In test bundle, version.txt may not exist — should fall back to "dev"
+        XCTAssertFalse(version.isEmpty, "Version should never be empty")
     }
 }

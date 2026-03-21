@@ -1,6 +1,6 @@
 import Cocoa
 import Markdown
-import WebKit  // legacy WebView lives here
+import WebKit
 
 private class BundleAnchor {}
 
@@ -8,16 +8,6 @@ public struct MarkdownRenderer {
 
     /// Canonical preview size — used by QuickLook extension and screenshot tool.
     public static let previewSize = NSSize(width: 1060, height: 900)
-
-    /// Single source of truth for creating a configured preview WebView.
-    /// Both the QuickLook extension and the screenshot tool must use this
-    /// to guarantee identical rendering.
-    public static func createPreviewWebView(frame: NSRect? = nil) -> WebView {
-        let webView = WebView(frame: NSRect(origin: .zero, size: frame?.size ?? previewSize))
-        webView.autoresizingMask = [.width, .height]
-        webView.drawsBackground = false
-        return webView
-    }
 
     public static func render(fileAt url: URL) throws -> String {
         let markdown = try String(contentsOf: url, encoding: .utf8)
@@ -108,6 +98,7 @@ public struct MarkdownRenderer {
 
     private static func wrapInHTMLDocument(body: String, title: String) -> String {
         let css = loadCSS()
+        let version = loadVersion()
         let escapedTitle = escapeHTML(title)
         return """
         <!DOCTYPE html>
@@ -118,14 +109,31 @@ public struct MarkdownRenderer {
         <title>\(escapedTitle)</title>
         <style>
         \(css)
+        @keyframes mdql-spin { to { transform: rotate(360deg); } }
+        #mdql-loading {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 24px; height: 24px;
+            border: 2px solid var(--border-color, #ddd);
+            border-top-color: var(--link-color, #4183c4);
+            border-radius: 50%;
+            animation: mdql-spin 0.6s linear infinite;
+        }
         </style>
         </head>
         <body>
-        <article class="markdown-body">
+        <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
+        <div id="mdql-loading"></div>
+        <article class="markdown-body" style="display:none;">
         \(body)
         </article>
         <script>
         (function() {
+            var loader = document.getElementById('mdql-loading');
+            var article = document.querySelector('.markdown-body');
+            if (loader) loader.remove();
+            if (article) article.style.display = '';
+
             var toast = document.createElement('div');
             toast.id = 'mdql-toast';
             toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);' +
@@ -135,7 +143,7 @@ public struct MarkdownRenderer {
             document.body.appendChild(toast);
 
             window.__mdqlShowToast = function(url) {
-                toast.textContent = 'Copied: ' + url;
+                toast.textContent = 'Opening: ' + url;
                 toast.style.opacity = '1';
                 toast.style.transform = 'translateX(-50%) translateY(0)';
                 clearTimeout(toast._t);
@@ -150,8 +158,13 @@ public struct MarkdownRenderer {
                 while (el && el.tagName !== 'A') el = el.parentElement;
                 if (el && el.href && /^https?:/.test(el.href)) {
                     e.preventDefault();
-                    if (window.mdql && window.mdql.openURL) {
-                        window.mdql.openURL(el.href);
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdql) {
+                        window.__mdqlShowToast(el.href);
+                        window.webkit.messageHandlers.mdql.postMessage({
+                            action: "openURL",
+                            url: el.href,
+                            background: e.metaKey
+                        });
                     }
                 }
             });
@@ -168,6 +181,14 @@ public struct MarkdownRenderer {
             return ""
         }
         return css
+    }
+
+    static func loadVersion() -> String {
+        guard let url = Bundle(for: BundleAnchor.self).url(forResource: "version", withExtension: "txt"),
+              let version = try? String(contentsOf: url, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return "dev"
+        }
+        return version
     }
 
     static func escapeHTML(_ string: String) -> String {

@@ -48,8 +48,6 @@ By default, QuickLook extensions use **data-based previews** (`QLIsDataBasedPrev
 
 We tried every approach we could find. None of them work inside the QuickLook extension sandbox:
 
-- **WKWebView** — The modern WebKit view spawns separate XPC subprocesses (WebContent, GPU, Networking) that the sandbox blocks. The view loads but renders blank. Adding `com.apple.security.temporary-exception.mach-lookup.global-name` entitlements doesn't help because these are XPC services, not Mach services.
-
 - **JavaScript polling** — Embedding `fetch()`, `XMLHttpRequest`, or `EventSource` in the HTML to poll for changes. The sandbox blocks all network access from the WebView, including `file://` URLs and `http://127.0.0.1`.
 
 - **NSAttributedString(html:)** — Renders HTML in-process (no sandbox issues), but its CSS engine is extremely limited. No CSS custom properties (`var()`), no `@media` queries, no advanced selectors. Our stylesheet renders with broken fonts, colors, and layout.
@@ -58,30 +56,28 @@ We tried every approach we could find. None of them work inside the QuickLook ex
 
 - **localStorage / WebSocket / SSE** — All blocked by the sandbox.
 
-### What works: legacy WebView + DispatchSource FileWatcher
+### What works: WKWebView + WKScriptMessageHandler + DispatchSource FileWatcher
 
-The solution uses three components working together:
+The solution uses four components working together:
 
 **1. View-based preview (`QLIsDataBasedPreview=false`)**
 
 Instead of returning data, the extension provides an `NSView` that stays alive for the lifetime of the QuickLook panel. This is the key enabler — it gives us a persistent view we can update.
 
 ```swift
-// PreviewController uses preparePreviewOfFile(at:completionHandler:)
-// instead of providePreview(for:) — the view IS the preview
 func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
     let html = try MarkdownRenderer.render(fileAt: url)
-    webView.mainFrame.loadHTMLString(html, baseURL: nil)
+    webView.loadHTMLString(html, baseURL: nil)
     handler(nil)
     // Start watching for changes...
 }
 ```
 
-**2. Legacy `WebView` (deprecated, but the only option)**
+**2. WKWebView with `network.client` entitlement**
 
-The old `WebView` class (deprecated in macOS 10.14, `import WebKit`) renders HTML **in-process** — no XPC subprocesses, no sandbox issues. It supports the full WebKit CSS engine: CSS custom properties, `@media (prefers-color-scheme: dark)`, all modern selectors. The same `preview.css` that works in a browser works here unchanged.
+WKWebView spawns out-of-process XPC subprocesses (WebContent, GPU, Networking) that the sandbox blocks by default. The fix is adding the `com.apple.security.network.client` entitlement to the extension — WKWebView requires this even for local HTML because it communicates with its subprocesses via XPC. This was a known WebKit bug on macOS Big Sur (fixed in macOS 12 via WebKit Changeset 271895).
 
-Why not WKWebView? It spawns `com.apple.WebKit.WebContent`, `com.apple.WebKit.GPU`, and `com.apple.WebKit.Networking` as separate XPC processes. The extension sandbox blocks all of them, resulting in a blank view.
+Link clicks are intercepted in JavaScript and dispatched to Swift via `WKScriptMessageHandler`, where they're opened in the default browser.
 
 **3. FileWatcher (DispatchSource with `O_EVTONLY`)**
 
