@@ -26,10 +26,10 @@ qlmanage -p /path/to/file.md
 macOS QuickLook preview extension for Markdown files. Three Xcode targets:
 
 - **mdql** — Host app. Minimal AppDelegate (registration is handled by `scripts/install.sh` since the app is sandboxed). Post-build script calls `install.sh` to copy to `~/Applications/`.
-- **mdqlPreview** — QuickLook Preview Extension (.appex). View-based preview (`QLIsDataBasedPreview=false`) using legacy `WebView` + FileWatcher for live updates in Finder. Registered for `net.daringfireball.markdown` UTI.
+- **mdqlPreview** — QuickLook Preview Extension (.appex). View-based preview (`QLIsDataBasedPreview=false`) using `WKWebView` + `WKScriptMessageHandler` + FileWatcher for live updates in Finder. Registered for `net.daringfireball.markdown` UTI.
 - **mdqlTests** — Unit tests. Compiles mdqlPreview and mdql sources directly (not hosted tests) since app extensions can't be imported as modules by test bundles.
 
-**Data flow:** Finder Space → `PreviewController.preparePreviewOfFile(at:)` → `MarkdownRenderer.render(fileAt:)` → legacy `WebView.mainFrame.loadHTMLString()`. FileWatcher triggers innerHTML injection via `stringByEvaluatingJavaScript(from:)`.
+**Data flow:** Finder Space → `PreviewController.preparePreviewOfFile(at:)` → `MarkdownRenderer.render(fileAt:)` → `WKWebView.loadHTMLString()`. Link clicks are intercepted in JS and posted via `window.webkit.messageHandlers.mdql.postMessage()` to Swift's `WKScriptMessageHandler`. FileWatcher triggers innerHTML injection via `evaluateJavaScript()`.
 
 **Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, branch: main) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Added to mdqlPreview and mdqlTests targets.
 
@@ -37,9 +37,9 @@ macOS QuickLook preview extension for Markdown files. Three Xcode targets:
 
 - `scripts/install.sh` — Single source of truth for install + registration. Copies to ~/Applications, cleans stale lsregister/pluginkit entries, registers extension, launches app for pluginkit finalization.
 - `Makefile` — `make install` builds Release, calls `install.sh`, verifies no duplicates. `make clean` cleans build artifacts.
-- `mdqlPreview/MarkdownRenderer.swift` — Core rendering. `render()` for full HTML with CSS, `renderBody()` for body-only HTML (used by innerHTML updates). Uses `BundleAnchor` class for cross-target bundle resolution. Also owns `createPreviewWebView()` — the single factory for preview WebViews (used by both PreviewController and mdql-screenshot).
+- `mdqlPreview/MarkdownRenderer.swift` — Core rendering. `render()` for full HTML with CSS, `renderBody()` for body-only HTML (used by innerHTML updates). Uses `BundleAnchor` class for cross-target bundle resolution. Also owns `createPreviewWebView()` — legacy WebView factory used by mdql-screenshot only.
 - `mdqlPreview/Resources/preview.css` — Inkpad-derived design tokens. Uses CSS custom properties with `@media (prefers-color-scheme: dark)` for automatic dark mode. Key tokens: text `#3f3b3d`, bg `#f9f9f9`, links `#4183c4`.
-- `mdqlPreview/PreviewController.swift` — View-based QLPreviewingController with legacy WebView + FileWatcher for live updates.
+- `mdqlPreview/PreviewController.swift` — View-based QLPreviewingController with WKWebView + WKScriptMessageHandler for native JS↔Swift messaging + FileWatcher for live updates.
 - `mdql/FileWatcher.swift` — DispatchSource file monitor with rename/delete recovery and 100ms coalescing.
 - `mdqlTests/Fixtures/` — Test markdown files (basic, gfm, empty, special-chars).
 

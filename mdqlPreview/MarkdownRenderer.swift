@@ -135,7 +135,7 @@ public struct MarkdownRenderer {
             document.body.appendChild(toast);
 
             window.__mdqlShowToast = function(url) {
-                toast.textContent = 'Copied: ' + url;
+                toast.textContent = 'Opening: ' + url;
                 toast.style.opacity = '1';
                 toast.style.transform = 'translateX(-50%) translateY(0)';
                 clearTimeout(toast._t);
@@ -150,8 +150,13 @@ public struct MarkdownRenderer {
                 while (el && el.tagName !== 'A') el = el.parentElement;
                 if (el && el.href && /^https?:/.test(el.href)) {
                     e.preventDefault();
-                    if (window.mdql && window.mdql.openURL) {
-                        window.mdql.openURL(el.href);
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdql) {
+                        window.__mdqlShowToast(el.href);
+                        window.webkit.messageHandlers.mdql.postMessage({
+                            action: "openURL",
+                            url: el.href,
+                            background: e.metaKey
+                        });
                     }
                 }
             });

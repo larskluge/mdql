@@ -3,28 +3,18 @@ import QuickLookUI
 import Quartz
 import WebKit
 
-class PreviewController: NSViewController, QLPreviewingController, WebFrameLoadDelegate {
-    private var webView: WebView!
+class PreviewController: NSViewController, QLPreviewingController, WKNavigationDelegate, WKScriptMessageHandler {
+    private var webView: WKWebView!
     private var fileWatcher: FileWatcher?
     private var fileURL: URL?
-    private var linkBridge: LinkBridge!
-    var copyURLToClipboard: (URL) -> Void = { url in
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.absoluteString, forType: .string)
-    }
 
     override func loadView() {
-        linkBridge = LinkBridge { [weak self] urlString in
-            guard let self = self, let url = URL(string: urlString) else { return }
-            self.copyURLToClipboard(url)
-            // Tell JS to show the toast
-            self.webView.stringByEvaluatingJavaScript(from:
-                "window.__mdqlShowToast && window.__mdqlShowToast('\(url.absoluteString.replacingOccurrences(of: "'", with: "\\'"))')"
-            )
-        }
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "mdql")
 
-        webView = MarkdownRenderer.createPreviewWebView()
-        webView.frameLoadDelegate = self
+        webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
+        webView.autoresizingMask = [.width, .height]
+        webView.navigationDelegate = self
         self.view = webView
         preferredContentSize = MarkdownRenderer.previewSize
     }
@@ -34,7 +24,7 @@ class PreviewController: NSViewController, QLPreviewingController, WebFrameLoadD
 
         do {
             let html = try MarkdownRenderer.render(fileAt: url)
-            webView.mainFrame.loadHTMLString(html, baseURL: nil)
+            webView.loadHTMLString(html, baseURL: nil)
         } catch {
             handler(error)
             return
@@ -49,10 +39,24 @@ class PreviewController: NSViewController, QLPreviewingController, WebFrameLoadD
         fileWatcher?.start()
     }
 
-    // MARK: - WebFrameLoadDelegate
+    // MARK: - WKScriptMessageHandler
 
-    func webView(_ sender: WebView!, didClearWindowObject windowObject: WebScriptObject!, for frame: WebFrame!) {
-        windowObject.setValue(linkBridge, forKey: "mdql")
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let action = body["action"] as? String else { return }
+
+        if action == "openURL", let urlString = body["url"] as? String, let url = URL(string: urlString) {
+            let background = body["background"] as? Bool ?? false
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = !background
+            NSWorkspace.shared.open(url, configuration: config)
+        }
+    }
+
+    // MARK: - WKNavigationDelegate
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        decisionHandler(.allow)
     }
 
     private func reloadContent() {
@@ -61,31 +65,8 @@ class PreviewController: NSViewController, QLPreviewingController, WebFrameLoadD
 
         let bodyHTML = MarkdownRenderer.renderBody(markdown: markdown)
         let base64 = Data(bodyHTML.utf8).base64EncodedString()
-        webView.stringByEvaluatingJavaScript(from:
+        webView.evaluateJavaScript(
             "document.querySelector('.markdown-body').innerHTML = new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0)))"
         )
-    }
-}
-
-// MARK: - JavaScript bridge
-
-@objc class LinkBridge: NSObject {
-    private let handler: (String) -> Void
-
-    init(handler: @escaping (String) -> Void) {
-        self.handler = handler
-    }
-
-    @objc func openURL(_ urlString: String) {
-        handler(urlString)
-    }
-
-    override class func isSelectorExcluded(fromWebScript selector: Selector) -> Bool {
-        return selector != #selector(openURL(_:))
-    }
-
-    override class func webScriptName(for selector: Selector) -> String? {
-        if selector == #selector(openURL(_:)) { return "openURL" }
-        return nil
     }
 }
