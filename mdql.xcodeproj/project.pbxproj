@@ -119,6 +119,7 @@
 		};
 		H10000080000000000000008 /* Generate version.txt */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
