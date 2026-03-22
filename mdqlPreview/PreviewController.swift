@@ -6,7 +6,7 @@ import WebKit
 class PreviewController: NSViewController, QLPreviewingController, WKNavigationDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
     private var fileWatcher: FileWatcher?
-    private var fileURL: URL?
+    private(set) var fileURL: URL?
     private var xpcConnection: NSXPCConnection?
 
     /// Injectable URL opener. Default uses the XPC service to open in the default browser.
@@ -64,15 +64,57 @@ class PreviewController: NSViewController, QLPreviewingController, WKNavigationD
         openURL(url)
     }
 
+    /// Handles an openMarkdown action. Exposed for testing.
+    func handleOpenMarkdown(_ urlString: String) {
+        guard let urlString = urlString.removingPercentEncoding ?? Optional(urlString),
+              let currentURL = self.fileURL,
+              !urlString.isEmpty else { return }
+
+        let resolved = URL(fileURLWithPath: urlString, relativeTo: currentURL.deletingLastPathComponent()).standardized
+        let ext = resolved.pathExtension.lowercased()
+        guard ext == "md" || ext == "markdown",
+              FileManager.default.fileExists(atPath: resolved.path) else { return }
+
+        loadMarkdownFile(at: resolved)
+    }
+
+    /// Loads and renders a markdown file, replacing the current preview.
+    func loadMarkdownFile(at url: URL) {
+        fileWatcher?.stop()
+        fileURL = url
+
+        do {
+            let html = try MarkdownRenderer.render(fileAt: url)
+            webView.loadHTMLString(html, baseURL: nil)
+        } catch {
+            NSLog("mdql: failed to load \(url.path): \(error)")
+            return
+        }
+
+        fileWatcher = FileWatcher(url: url) { [weak self] in
+            self?.reloadContent()
+        }
+        fileWatcher?.start()
+    }
+
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
 
-        if action == "openURL", let urlString = body["url"] as? String {
-            let background = body["background"] as? Bool ?? false
-            handleOpenURL(urlString, background: background)
+        switch action {
+        case "openURL":
+            if let urlString = body["url"] as? String {
+                let background = body["background"] as? Bool ?? false
+                handleOpenURL(urlString, background: background)
+            }
+        case "openMarkdown":
+            if let urlString = body["url"] as? String {
+                handleOpenMarkdown(urlString)
+            }
+        default:
+            break
         }
     }
 

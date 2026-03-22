@@ -119,6 +119,104 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertNotNil(interface, "OpenURLProtocol must be usable with NSXPCInterface")
     }
 
+    // MARK: - Markdown link detection in JS
+
+    func testRenderedHTMLContainsMdLinkDetection() {
+        let html = MarkdownRenderer.render(markdown: "[readme](readme.md)", title: "t")
+        XCTAssertTrue(html.contains("isMdLink"), "HTML must contain isMdLink function")
+        XCTAssertTrue(html.contains("openMarkdown"), "HTML must contain openMarkdown action")
+    }
+
+    func testRenderedHTMLContainsStatusBar() {
+        let html = MarkdownRenderer.render(markdown: "test", title: "t")
+        XCTAssertTrue(html.contains("id=\"mdql-status\""), "HTML must contain status bar element")
+    }
+
+    func testRenderedHTMLContainsHoverHandlers() {
+        let html = MarkdownRenderer.render(markdown: "test", title: "t")
+        XCTAssertTrue(html.contains("mouseover"), "HTML must contain mouseover handler")
+        XCTAssertTrue(html.contains("mouseout"), "HTML must contain mouseout handler")
+    }
+
+    // MARK: - openMarkdown handler
+
+    func testHandleOpenMarkdownLoadsExistingFile() throws {
+        let controller = PreviewController()
+        controller.loadView()
+
+        // Create a temp directory with two .md files
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        let file2 = tmpDir.appendingPathComponent("two.md")
+        try "# One".write(to: file1, atomically: true, encoding: .utf8)
+        try "# Two".write(to: file2, atomically: true, encoding: .utf8)
+
+        // Set current file to file1
+        controller.preparePreviewOfFile(at: file1) { _ in }
+
+        // Navigate to file2
+        controller.handleOpenMarkdown("two.md")
+
+        // fileURL should now be file2
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "two.md")
+    }
+
+    func testHandleOpenMarkdownIgnoresNonExistentFile() {
+        let controller = PreviewController()
+        controller.loadView()
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        try? "# One".write(to: file1, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        controller.preparePreviewOfFile(at: file1) { _ in }
+        controller.handleOpenMarkdown("nonexistent.md")
+
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "one.md",
+                       "Should not change fileURL for nonexistent file")
+    }
+
+    func testHandleOpenMarkdownIgnoresNonMdExtension() {
+        let controller = PreviewController()
+        controller.loadView()
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        let txtFile = tmpDir.appendingPathComponent("notes.txt")
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        try? "# One".write(to: file1, atomically: true, encoding: .utf8)
+        try? "hello".write(to: txtFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        controller.preparePreviewOfFile(at: file1) { _ in }
+        controller.handleOpenMarkdown("notes.txt")
+
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "one.md",
+                       "Should not navigate to non-markdown files")
+    }
+
+    func testHandleOpenMarkdownIgnoresHttpUrls() {
+        let controller = PreviewController()
+        controller.loadView()
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        try? "# One".write(to: file1, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        controller.preparePreviewOfFile(at: file1) { _ in }
+        controller.handleOpenMarkdown("https://example.com/readme.md")
+
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "one.md",
+                       "Should not navigate to HTTP URLs")
+    }
+
     // MARK: - Version display
 
     func testRenderedHTMLContainsVersion() {

@@ -119,11 +119,27 @@ public struct MarkdownRenderer {
             border-radius: 50%;
             animation: mdql-spin 0.6s linear infinite;
         }
+        #mdql-status {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            padding: 3px 8px;
+            font: 11px/1.4 -apple-system, sans-serif;
+            background: rgba(0,0,0,0.06);
+            color: #555;
+            display: none;
+            z-index: 9999;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        @media (prefers-color-scheme: dark) {
+            #mdql-status { background: rgba(255,255,255,0.1); color: #aaa; }
+        }
         </style>
         </head>
         <body>
         <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
         <div id="mdql-loading"></div>
+        <div id="mdql-status"></div>
         <article class="markdown-body" style="display:none;">
         \(body)
         </article>
@@ -153,10 +169,53 @@ public struct MarkdownRenderer {
                 }, 2000);
             };
 
-            document.addEventListener('click', function(e) {
-                var el = e.target;
+            var statusBar = document.getElementById('mdql-status');
+
+            function isMdLink(href) {
+                if (!href) return false;
+                if (/^https?:/i.test(href)) return false;
+                return /\\.(?:md|markdown)(#.*)?$/i.test(href);
+            }
+
+            function findLink(el) {
                 while (el && el.tagName !== 'A') el = el.parentElement;
-                if (el && el.href && /^https?:/.test(el.href)) {
+                return el;
+            }
+
+            document.addEventListener('mouseover', function(e) {
+                var el = findLink(e.target);
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (isMdLink(href)) {
+                    statusBar.textContent = '\u{1F4C4} Open [' + href.split('/').pop().replace(/#.*$/, '') + '] in preview';
+                } else if (/^https?:/i.test(el.href || href)) {
+                    statusBar.textContent = '\u{1F310} Opens in browser';
+                } else {
+                    return;
+                }
+                statusBar.style.display = '';
+            });
+
+            document.addEventListener('mouseout', function(e) {
+                var el = findLink(e.target);
+                if (el) statusBar.style.display = 'none';
+            });
+
+            document.addEventListener('click', function(e) {
+                var el = findLink(e.target);
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (isMdLink(href)) {
+                    e.preventDefault();
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdql) {
+                        window.webkit.messageHandlers.mdql.postMessage({
+                            action: "openMarkdown",
+                            url: href
+                        });
+                    }
+                    return;
+                }
+                if (/^https?:/.test(el.href)) {
                     e.preventDefault();
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdql) {
                         window.__mdqlShowToast(el.href);
