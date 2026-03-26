@@ -15,12 +15,12 @@ public struct MarkdownRenderer {
         return render(markdown: markdown, title: title)
     }
 
-    public static func render(markdown: String, title: String = "") -> String {
+    public static func render(markdown: String, title: String = "", showBackButton: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         let html = HTMLFormatter.format(document)
         let frontMatterHTML = renderFrontMatter(frontMatter)
-        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title)
+        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton)
     }
 
     public static func renderBody(markdown: String) -> String {
@@ -96,10 +96,13 @@ public struct MarkdownRenderer {
         return "<div class=\"front-matter\">\(items.joined(separator: " <span class=\"fm-sep\">·</span> "))</div>\n"
     }
 
-    private static func wrapInHTMLDocument(body: String, title: String) -> String {
+    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
+        let backButtonHTML = showBackButton ? """
+        <div id="mdql-back" onclick="window.webkit.messageHandlers.mdql.postMessage({action:'goBack'})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
+        """ : ""
         return """
         <!DOCTYPE html>
         <html lang="en">
@@ -119,11 +122,45 @@ public struct MarkdownRenderer {
             border-radius: 50%;
             animation: mdql-spin 0.6s linear infinite;
         }
+        #mdql-back {
+            position: fixed; top: 12px; left: 12px;
+            width: 28px; height: 28px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 6px;
+            background: rgba(0,0,0,0.06);
+            color: #555;
+            cursor: pointer;
+            z-index: 9999;
+            transition: background 0.15s;
+        }
+        #mdql-back:hover { background: rgba(0,0,0,0.12); }
+        @media (prefers-color-scheme: dark) {
+            #mdql-back { background: rgba(255,255,255,0.1); color: #ccc; }
+            #mdql-back:hover { background: rgba(255,255,255,0.2); }
+        }
+        #mdql-status {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            padding: 4px 12px;
+            font: 12px/1.4 -apple-system, sans-serif;
+            background: rgba(0,0,0,0.08);
+            color: #444;
+            display: none;
+            z-index: 9999;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #mdql-status.visible { display: block; }
+        @media (prefers-color-scheme: dark) {
+            #mdql-status { background: rgba(0,0,0,0.65); color: #ddd; }
+        }
         </style>
         </head>
         <body>
+        \(backButtonHTML)
         <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
         <div id="mdql-loading"></div>
+        <div id="mdql-status"></div>
         <article class="markdown-body" style="display:none;">
         \(body)
         </article>
@@ -153,19 +190,58 @@ public struct MarkdownRenderer {
                 }, 2000);
             };
 
-            document.addEventListener('click', function(e) {
-                var el = e.target;
+            var statusBar = document.getElementById('mdql-status');
+
+            function isMdLink(href) {
+                if (!href) return false;
+                if (/^https?:/i.test(href)) return false;
+                return /\\.(?:md|markdown)(#.*)?$/i.test(href);
+            }
+
+            function findLink(el) {
                 while (el && el.tagName !== 'A') el = el.parentElement;
-                if (el && el.href && /^https?:/.test(el.href)) {
+                return el;
+            }
+
+            document.addEventListener('mouseover', function(e) {
+                var el = findLink(e.target);
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (isMdLink(href)) {
+                    statusBar.textContent = '\u{1F4C4}  Open [' + href.split('/').pop().replace(/#.*$/, '') + '] in preview';
+                } else if (/^https?:/i.test(el.href || href)) {
+                    statusBar.textContent = '\u{1F310}  Opens in browser';
+                } else {
+                    return;
+                }
+                statusBar.classList.add('visible');
+            });
+
+            document.addEventListener('mouseout', function(e) {
+                var el = findLink(e.target);
+                if (el && !el.contains(e.relatedTarget)) statusBar.classList.remove('visible');
+            });
+
+            document.addEventListener('click', function(e) {
+                var el = findLink(e.target);
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (isMdLink(href)) {
                     e.preventDefault();
-                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdql) {
-                        window.__mdqlShowToast(el.href);
-                        window.webkit.messageHandlers.mdql.postMessage({
-                            action: "openURL",
-                            url: el.href,
-                            background: e.metaKey
-                        });
-                    }
+                    window.webkit.messageHandlers.mdql.postMessage({
+                        action: "openMarkdown",
+                        url: href
+                    });
+                    return;
+                }
+                if (/^https?:/.test(el.href)) {
+                    e.preventDefault();
+                    window.__mdqlShowToast(el.href);
+                    window.webkit.messageHandlers.mdql.postMessage({
+                        action: "openURL",
+                        url: el.href,
+                        background: e.metaKey
+                    });
                 }
             });
         })();

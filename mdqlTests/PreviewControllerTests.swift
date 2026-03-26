@@ -119,6 +119,83 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertNotNil(interface, "OpenURLProtocol must be usable with NSXPCInterface")
     }
 
+    // MARK: - Markdown link detection in JS
+
+    func testRenderedHTMLContainsMdLinkDetection() {
+        let html = MarkdownRenderer.render(markdown: "[readme](readme.md)", title: "t")
+        XCTAssertTrue(html.contains("isMdLink"), "HTML must contain isMdLink function")
+        XCTAssertTrue(html.contains("openMarkdown"), "HTML must contain openMarkdown action")
+    }
+
+    func testTableMdLinksRenderAsAnchors() {
+        let table = """
+        | Spec | Status |
+        |------|--------|
+        | [04 — Source](04-source.md) | Draft |
+        | [08 — WhatsApp](08-wa.md) | Partial |
+        | [12 — Jobs](12-jobs.md) | Draft |
+        """
+        let html = MarkdownRenderer.renderBody(markdown: table)
+        XCTAssertTrue(html.contains("href=\"04-source.md\""), "Link 04 must have correct href")
+        XCTAssertTrue(html.contains("href=\"08-wa.md\""), "Link 08 must have correct href")
+        XCTAssertTrue(html.contains("href=\"12-jobs.md\""), "Link 12 must have correct href")
+    }
+
+    func testRenderedHTMLContainsStatusBar() {
+        let html = MarkdownRenderer.render(markdown: "test", title: "t")
+        XCTAssertTrue(html.contains("id=\"mdql-status\""), "HTML must contain status bar element")
+    }
+
+    func testRenderedHTMLContainsHoverHandlers() {
+        let html = MarkdownRenderer.render(markdown: "test", title: "t")
+        XCTAssertTrue(html.contains("mouseover"), "HTML must contain mouseover handler")
+        XCTAssertTrue(html.contains("mouseout"), "HTML must contain mouseout handler")
+        XCTAssertTrue(html.contains("classList"), "HTML must toggle status bar via CSS class")
+    }
+
+    // MARK: - openMarkdown handler
+
+    func testLoadMarkdownFileUpdatesFileURL() throws {
+        let controller = PreviewController()
+        controller.loadView()
+
+        // Create a temp directory with two .md files
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        let file2 = tmpDir.appendingPathComponent("two.md")
+        try "# One".write(to: file1, atomically: true, encoding: .utf8)
+        try "# Two".write(to: file2, atomically: true, encoding: .utf8)
+
+        // Load file1, then navigate to file2
+        try controller.loadMarkdownFile(at: file1)
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "one.md")
+
+        try controller.loadMarkdownFile(at: file2)
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "two.md")
+    }
+
+    func testHandleOpenMarkdownIgnoresNonMdExtension() {
+        // handleOpenMarkdown checks extension before calling XPC
+        let controller = PreviewController()
+        controller.loadView()
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        try? "# One".write(to: file1, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        controller.preparePreviewOfFile(at: file1) { _ in }
+        controller.handleOpenMarkdown("notes.txt")
+
+        // fileURL unchanged because extension guard rejects .txt
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "one.md",
+                       "Should not navigate to non-markdown files")
+    }
+
     // MARK: - Version display
 
     func testRenderedHTMLContainsVersion() {
