@@ -18,7 +18,7 @@ public struct MarkdownRenderer {
     public static func render(markdown: String, title: String = "", showBackButton: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
-        let html = HTMLFormatter.format(document)
+        let html = postProcessEscaping(HTMLFormatter.format(document))
         let frontMatterHTML = renderFrontMatter(frontMatter)
         return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton)
     }
@@ -27,7 +27,69 @@ public struct MarkdownRenderer {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         let frontMatterHTML = renderFrontMatter(frontMatter)
-        return frontMatterHTML + HTMLFormatter.format(document)
+        return frontMatterHTML + postProcessEscaping(HTMLFormatter.format(document))
+    }
+
+    // MARK: - HTML Escaping
+    // swift-markdown's HTMLFormatter interpolates user content raw in several places
+    // (CodeBlock.code, InlineCode.code, Heading.plainText, Link.destination). We
+    // post-process its output to close those holes. See docs/superpowers/specs/
+    // 2026-04-17-html-escaping-fix-design.md.
+
+    static func postProcessEscaping(_ html: String) -> String {
+        var out = html
+        out = replaceRegex(in: out, pattern: #"<code([^>]*)>([\s\S]*?)</code>"#) { groups in
+            "<code\(groups[1])>\(escapeCodeContent(groups[2]))</code>"
+        }
+        out = replaceRegex(in: out, pattern: #"<h([1-6])>([\s\S]*?)</h\1>"#) { groups in
+            "<h\(groups[1])>\(escapeCodeContent(groups[2]))</h\(groups[1])>"
+        }
+        out = replaceRegex(in: out, pattern: #"<a href="([^"]*)">"#) { groups in
+            "<a href=\"\(escapeAttribute(groups[1]))\">"
+        }
+        return out
+    }
+
+    private static func escapeCodeContent(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private static func escapeAttribute(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+
+    private static func replaceRegex(
+        in input: String,
+        pattern: String,
+        with transform: ([String]) -> String
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return input
+        }
+        let nsInput = input as NSString
+        let matches = regex.matches(in: input, options: [], range: NSRange(location: 0, length: nsInput.length))
+        var out = ""
+        var cursor = 0
+        for match in matches {
+            let range = match.range
+            if range.location > cursor {
+                out += nsInput.substring(with: NSRange(location: cursor, length: range.location - cursor))
+            }
+            var groups: [String] = []
+            for i in 0..<match.numberOfRanges {
+                let r = match.range(at: i)
+                groups.append(r.location == NSNotFound ? "" : nsInput.substring(with: r))
+            }
+            out += transform(groups)
+            cursor = range.location + range.length
+        }
+        if cursor < nsInput.length {
+            out += nsInput.substring(with: NSRange(location: cursor, length: nsInput.length - cursor))
+        }
+        return out
     }
 
     // MARK: - Front Matter

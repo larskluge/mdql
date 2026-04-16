@@ -18,6 +18,7 @@
 		A10000090000000000000009 /* empty.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000090000000000000009 /* empty.md */; };
 		A1000000000000000000000A /* special-chars.md in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* special-chars.md */; };
 		F10000010000000000000001 /* front-matter.md in Resources */ = {isa = PBXBuildFile; fileRef = F20000010000000000000001 /* front-matter.md */; };
+		B10000110000000000000011 /* code-with-html.md in Resources */ = {isa = PBXBuildFile; fileRef = B20000110000000000000011 /* code-with-html.md */; };
 		A1000000000000000000000B /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A5000001000000000000000B /* Markdown */; };
 		A1000000000000000000000C /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
 		A1000000000000000000000D /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
@@ -147,6 +148,7 @@
 		A20000090000000000000009 /* empty.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = empty.md; sourceTree = "<group>"; };
 		A2000000000000000000000A /* special-chars.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "special-chars.md"; sourceTree = "<group>"; };
 		F20000010000000000000001 /* front-matter.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "front-matter.md"; sourceTree = "<group>"; };
+		B20000110000000000000011 /* code-with-html.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "code-with-html.md"; sourceTree = "<group>"; };
 		A2000000000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000C /* mdql.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mdql.entitlements; sourceTree = "<group>"; };
 		A2000000000000000000000D /* mdqlPreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mdqlPreview.entitlements; sourceTree = "<group>"; };
@@ -254,6 +256,7 @@
 				A20000090000000000000009 /* empty.md */,
 				A2000000000000000000000A /* special-chars.md */,
 				F20000010000000000000001 /* front-matter.md */,
+				B20000110000000000000011 /* code-with-html.md */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -502,6 +505,7 @@
 				A10000090000000000000009 /* empty.md in Resources */,
 				A1000000000000000000000A /* special-chars.md in Resources */,
 				F10000010000000000000001 /* front-matter.md in Resources */,
+				B10000110000000000000011 /* code-with-html.md in Resources */,
 				A1000000000000000000000D /* preview.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

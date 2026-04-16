@@ -72,6 +72,60 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("<pre><code class=\"language-swift\">"), "Should contain code block with language class")
     }
 
+    // MARK: - HTML Escaping (Issue #11)
+
+    func testCodeBlockEscapesAngleBrackets() {
+        let md = """
+        ```sql
+        SELECT * FROM <table>;
+        ```
+        """
+        let html = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(html.contains("&lt;table&gt;"), "Angle brackets in code block must be escaped; got: \(html)")
+        XCTAssertFalse(html.contains("<table>"), "Code block must not emit raw <table> tag; got: \(html)")
+    }
+
+    func testCodeBlockEscapesAmpersand() {
+        let md = """
+        ```
+        A && B
+        ```
+        """
+        let html = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(html.contains("A &amp;&amp; B"), "Ampersands in code block must be escaped; got: \(html)")
+    }
+
+    func testInlineCodeEscapesAngleBrackets() {
+        let md = "Use `<div>` for blocks."
+        let html = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(html.contains("<code>&lt;div&gt;</code>"), "Inline code content must be escaped; got: \(html)")
+    }
+
+    func testHeadingEscapesAngleBrackets() {
+        let md = "## Using <Component>"
+        let html = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(html.contains("<h2>Using &lt;Component&gt;</h2>"), "Heading content must be escaped; got: \(html)")
+    }
+
+    func testLinkHrefEscapesAmpersand() {
+        let md = "[q](https://a.com/?x=1&y=2)"
+        let html = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(html.contains("href=\"https://a.com/?x=1&amp;y=2\""), "Link href must escape ampersand; got: \(html)")
+    }
+
+    func testIssue11Repro() throws {
+        let url = fixtureURL("code-with-html")
+        let md = try String(contentsOf: url, encoding: .utf8)
+        let html = MarkdownRenderer.renderBody(markdown: md)
+
+        let preCount = html.components(separatedBy: "<pre><code").count - 1
+        XCTAssertEqual(preCount, 2, "Expected exactly two code blocks; got \(preCount). HTML:\n\(html)")
+
+        XCTAssertTrue(html.contains("Paragraph between blocks."), "Paragraph between code blocks must be preserved")
+        XCTAssertFalse(html.contains("<table>"), "Must not emit raw <table> tag")
+        XCTAssertFalse(html.contains("<pattern>"), "Must not emit raw <pattern> tag")
+    }
+
     // MARK: - HTML Document Structure
 
     func testHTMLDocumentStructure() {
