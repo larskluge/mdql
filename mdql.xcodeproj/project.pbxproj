@@ -42,6 +42,16 @@
 		H10000050000000000000005 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
 		H10000060000000000000006 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
 		H10000070000000000000007 /* com.mdql.app.open-url.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = H30000010000000000000001 /* com.mdql.app.open-url.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		I10000010000000000000001 /* MarkdownWebController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000010000000000000001 /* MarkdownWebController.swift */; };
+		I10000020000000000000002 /* MarkdownWebController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000010000000000000001 /* MarkdownWebController.swift */; };
+		I10000030000000000000003 /* MarkdownWebController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000010000000000000001 /* MarkdownWebController.swift */; };
+		I10000040000000000000004 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000020000000000000002 /* MarkdownDocument.swift */; };
+		I10000050000000000000005 /* DocumentWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000030000000000000003 /* DocumentWindowController.swift */; };
+		I10000060000000000000006 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		I10000070000000000000007 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* FileWatcher.swift */; };
+		I10000080000000000000008 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
+		I10000090000000000000009 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
+		I1000000000000000000000A /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = I50000010000000000000001 /* Markdown */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -167,6 +177,9 @@
 		H20000040000000000000004 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		H20000050000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		H30000010000000000000001 /* com.mdql.app.open-url.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = "com.mdql.app.open-url.xpc"; sourceTree = BUILT_PRODUCTS_DIR; };
+		I20000010000000000000001 /* MarkdownWebController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWebController.swift; sourceTree = "<group>"; };
+		I20000020000000000000002 /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
+		I20000030000000000000003 /* DocumentWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentWindowController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -174,6 +187,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				I10000090000000000000009 /* WebKit.framework in Frameworks */,
+				I1000000000000000000000A /* Markdown in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +233,8 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000001 /* AppDelegate.swift */,
+				I20000020000000000000002 /* MarkdownDocument.swift */,
+				I20000030000000000000003 /* DocumentWindowController.swift */,
 				D20000010000000000000001 /* FileWatcher.swift */,
 				A2000000000000000000000B /* Info.plist */,
 				A2000000000000000000000C /* mdql.entitlements */,
@@ -229,6 +246,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000020000000000000002 /* PreviewController.swift */,
+				I20000010000000000000001 /* MarkdownWebController.swift */,
 				A20000030000000000000003 /* MarkdownRenderer.swift */,
 				A90000050000000000000005 /* Resources */,
 				A20000060000000000000006 /* Info.plist */,
@@ -342,6 +360,7 @@
 			);
 			name = mdql;
 			packageProductDependencies = (
+				I50000010000000000000001 /* Markdown */,
 			);
 			productName = mdql;
 			productReference = A30000010000000000000001 /* mdql.app */;
@@ -485,6 +504,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				I10000080000000000000008 /* preview.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -518,6 +538,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000001 /* AppDelegate.swift in Sources */,
+				I10000040000000000000004 /* MarkdownDocument.swift in Sources */,
+				I10000050000000000000005 /* DocumentWindowController.swift in Sources */,
+				I10000020000000000000002 /* MarkdownWebController.swift in Sources */,
+				I10000060000000000000006 /* MarkdownRenderer.swift in Sources */,
+				I10000070000000000000007 /* FileWatcher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -526,6 +551,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000020000000000000002 /* PreviewController.swift in Sources */,
+				I10000010000000000000001 /* MarkdownWebController.swift in Sources */,
 				A10000030000000000000003 /* MarkdownRenderer.swift in Sources */,
 				D1000000000000000000000C /* FileWatcher.swift in Sources */,
 				H10000050000000000000005 /* OpenURLProtocol.swift in Sources */,
@@ -539,6 +565,7 @@
 				A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */,
 				A1000000000000000000000C /* MarkdownRenderer.swift in Sources */,
 				A1000000000000000000000E /* PreviewController.swift in Sources */,
+				I10000030000000000000003 /* MarkdownWebController.swift in Sources */,
 				D10000070000000000000007 /* FileWatcherTests.swift in Sources */,
 				D10000090000000000000009 /* FileWatcher.swift in Sources */,
 				E10000020000000000000002 /* PreviewControllerTests.swift in Sources */,
@@ -939,6 +966,11 @@
 			productName = Markdown;
 		};
 		G70000010000000000000001 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+		I50000010000000000000001 /* Markdown */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A5000000000000000000000B /* XCRemoteSwiftPackageReference "swift-markdown" */;
 			productName = Markdown;
