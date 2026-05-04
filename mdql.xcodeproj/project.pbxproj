@@ -13,6 +13,7 @@
 		A10000040000000000000004 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
 		A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000050000000000000005 /* MarkdownRendererTests.swift */; };
 		A10000060000000000000006 /* mdqlPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A30000020000000000000002 /* mdqlPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000100000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000100000000000000010 /* Assets.xcassets */; };
 		A10000070000000000000007 /* basic.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000070000000000000007 /* basic.md */; };
 		A10000080000000000000008 /* gfm.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000080000000000000008 /* gfm.md */; };
 		A10000090000000000000009 /* empty.md in Resources */ = {isa = PBXBuildFile; fileRef = A20000090000000000000009 /* empty.md */; };
@@ -161,6 +162,7 @@
 		B20000110000000000000011 /* code-with-html.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "code-with-html.md"; sourceTree = "<group>"; };
 		A2000000000000000000000B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000C /* mdql.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mdql.entitlements; sourceTree = "<group>"; };
+		A20000100000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000000000000000000000D /* mdqlPreview.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = mdqlPreview.entitlements; sourceTree = "<group>"; };
 		A30000010000000000000001 /* mdql.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mdql.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A30000020000000000000002 /* mdqlPreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = mdqlPreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -236,6 +238,7 @@
 				I20000020000000000000002 /* MarkdownDocument.swift */,
 				I20000030000000000000003 /* DocumentWindowController.swift */,
 				D20000010000000000000001 /* FileWatcher.swift */,
+				A20000100000000000000010 /* Assets.xcassets */,
 				A2000000000000000000000B /* Info.plist */,
 				A2000000000000000000000C /* mdql.entitlements */,
 			);
@@ -504,6 +507,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000100000000000000010 /* Assets.xcassets in Resources */,
 				I10000080000000000000008 /* preview.css in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -729,6 +733,7 @@
 		C20000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = mdql/mdql.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -747,6 +752,7 @@
 		C20000020000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = mdql/mdql.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
