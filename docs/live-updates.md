@@ -75,7 +75,7 @@ Finder's QuickLook **only reliably discovers extensions** from apps installed in
 - Multiple DerivedData copies create duplicate extension registrations
 - Duplicate registrations cause `key cannot be nil` crashes in `ExtensionFoundation`
 
-This is handled by `scripts/install.sh`, the single source of truth for installation and registration. It copies the app to `~/Applications/`, unregisters all stale DerivedData and sandbox container entries from `lsregister`, registers the canonical copy, and launches the app to finalize `pluginkit` registration. Both the Xcode post-build phase and `make install` call this script. The AppDelegate itself is a no-op — the app sandbox prevents it from running `lsregister` or `qlmanage`.
+This is handled by `scripts/install.sh`, the single source of truth for installation and registration. It copies the app to `/Applications/`, unregisters stale DerivedData and sandbox container entries from `lsregister`, registers the canonical copy, and launches the app to finalize `pluginkit` registration. Both the Xcode post-build phase and `make install` call this script. The AppDelegate itself is a no-op — the app sandbox prevents it from running `lsregister` or `qlmanage`.
 
 ## Cross-target bundle resolution
 

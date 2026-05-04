@@ -24,7 +24,7 @@ A macOS Quick Look extension for previewing Markdown files. Press Space on any `
 make install
 ```
 
-This builds a Release binary, copies it to `~/Applications/`, cleans up all stale DerivedData and duplicate registrations, registers the QuickLook extension, and verifies everything is correct. Press Space on any `.md` file in Finder to preview.
+This builds a Release binary, copies it to `/Applications/`, cleans up all stale DerivedData and duplicate registrations, registers the QuickLook extension, and verifies everything is correct. Press Space on any `.md` file in Finder to preview.
 
 ## Test
 

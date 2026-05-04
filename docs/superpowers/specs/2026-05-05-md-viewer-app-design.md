@@ -193,7 +193,7 @@ DispatchSource (FileWatcher) fires → MarkdownWebView.reloadContent()
 
 ## Install / make changes
 
-- `Makefile` `make install` flow is unchanged — it already builds Release, copies `mdql.app` to `~/Applications`, and registers via `scripts/install.sh`.
+- `Makefile` `make install` flow is unchanged — it already builds Release, copies `mdql.app` to `/Applications`, and registers via `scripts/install.sh`.
 - `scripts/install.sh`: `lsregister -f -R` already re-scans the bundle; the new `CFBundleDocumentTypes` entry will be picked up automatically. No script changes required.
 - After `make install`, double-clicking a `.md` in Finder will *not* open in mdql by default (rank Alternate). The user opts in via Get Info → "Open With" → mdql → "Change All…". This is intentional (Q7a).
 

@@ -19,17 +19,17 @@ install:
 			echo "ERROR: $$COUNT pluginkit registrations found (expected 1):"; \
 			echo "$$FINAL" | grep '$(BUNDLE_ID)'; \
 			exit 1; \
-		elif echo "$$FINAL" | grep -q '$(HOME)/Applications'; then \
-			echo "OK: Extension registered from ~/Applications"; \
+		elif echo "$$FINAL" | grep -Eq '(^|[[:space:]])/Applications/mdql\.app([[:space:]/]|$$)'; then \
+			echo "OK: Extension registered from /Applications"; \
 		elif echo "$$FINAL" | grep -q '$(BUNDLE_ID)'; then \
-			echo "WARN: Registered but not from ~/Applications:"; \
+			echo "WARN: Registered but not from /Applications:"; \
 			echo "$$FINAL" | grep '$(BUNDLE_ID)'; \
 		else \
 			echo "ERROR: Extension not registered!"; \
 			exit 1; \
 		fi
 	@# Verify no stale lsregister entries
-	@STALE="$$($(LSREGISTER) -dump 2>/dev/null | grep 'path:' | grep 'mdql.app' | grep -v '.appex' | grep -v '$(HOME)/Applications/mdql.app ' | grep -v 'Application Scripts' | grep -v 'WebKit' || true)" && \
+	@STALE="$$($(LSREGISTER) -dump 2>/dev/null | grep 'path:' | grep 'mdql.app' | grep -v '.appex' | grep -Ev 'path:[[:space:]]*/Applications/mdql\.app ' | grep -v 'Application Scripts' | grep -v 'WebKit' || true)" && \
 		if [ -n "$$STALE" ]; then \
 			echo "WARN: Stale lsregister entries found:"; \
 			echo "$$STALE" | sed 's/^/  /'; \

@@ -7,16 +7,16 @@ import WebKit
 final class DocumentWindowController: NSWindowController {
 
     private let controller = MarkdownWebController()
+    private var loadedURL: URL?
 
     convenience init() {
         let initialFrame = NSRect(origin: .zero, size: MarkdownRenderer.previewSize)
         let window = NSWindow(
             contentRect: initialFrame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.titlebarAppearsTransparent = true
         window.titleVisibility = .visible
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("MarkdownDocumentWindow")
@@ -37,5 +37,19 @@ final class DocumentWindowController: NSWindowController {
     /// Loads a markdown file into the window's web view.
     func load(fileAt url: URL) throws {
         try controller.loadMarkdownFile(at: url)
+        loadedURL = url
+        synchronizeWindowTitleWithDocumentName()
+    }
+
+    override func synchronizeWindowTitleWithDocumentName() {
+        if let loadedURL, let window {
+            window.title = loadedURL.lastPathComponent
+            window.representedURL = nil
+            window.representedFilename = ""
+        } else {
+            super.synchronizeWindowTitleWithDocumentName()
+            window?.representedURL = nil
+            window?.representedFilename = ""
+        }
     }
 }

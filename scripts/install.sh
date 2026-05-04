@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Install mdql.app to ~/Applications and register the QuickLook extension.
+# Install mdql.app to /Applications and register the QuickLook extension.
 #
 # Usage: scripts/install.sh <built-products-dir>
 #
@@ -13,11 +13,11 @@ set -euo pipefail
 BUILT_PRODUCTS_DIR="${1:?Usage: $0 <built-products-dir>}"
 
 APP_NAME="mdql.app"
-INSTALL_DIR="$HOME/Applications"
+INSTALL_DIR="/Applications"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister"
 DERIVED_DATA_DIR="$HOME/Library/Developer/Xcode/DerivedData"
 
-# 1. Copy to ~/Applications and re-sign (without --deep to preserve extension signature)
+# 1. Copy to /Applications and re-sign (without --deep to preserve extension signature)
 mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALL_DIR/$APP_NAME"
 cp -R "$BUILT_PRODUCTS_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
@@ -40,7 +40,7 @@ done || true
 "$LSREGISTER" -u "$HOME/Library/Application Scripts/com.mdql.app" 2>/dev/null || true
 "$LSREGISTER" -u "$HOME/Library/WebKit/com.mdql.app" 2>/dev/null || true
 
-# 4. Register from ~/Applications and reset QuickLook
+# 4. Register from /Applications and reset QuickLook
 "$LSREGISTER" -f -R "$INSTALL_DIR/$APP_NAME"
 qlmanage -r 2>/dev/null || true
 

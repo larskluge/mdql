@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test Commands
 
 ```bash
-# Build, install to ~/Applications, register extension, and verify
+# Build, install to /Applications, register extension, and verify
 make install
 
 # Run all tests
@@ -19,13 +19,13 @@ xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' \
 qlmanage -p /path/to/file.md
 ```
 
-`make install` is the primary build command. It builds a Release binary, calls `scripts/install.sh` to copy to `~/Applications/` and clean up stale registrations, then verifies pluginkit and lsregister have exactly one entry. The Xcode post-build phase also calls `scripts/install.sh` (with `SKIP_LAUNCH=1` since apps can't be launched during builds).
+`make install` is the primary build command. It builds a Release binary, calls `scripts/install.sh` to copy to `/Applications/` and clean up stale registrations, then verifies pluginkit and lsregister have exactly one entry. The Xcode post-build phase also calls `scripts/install.sh` (with `SKIP_LAUNCH=1` since apps can't be launched during builds).
 
 ## Architecture
 
 macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 
-- **mdql** — Host app. Minimal AppDelegate (registration is handled by `scripts/install.sh` since the app is sandboxed). Post-build script calls `install.sh` to copy to `~/Applications/`.
+- **mdql** — Host app. Minimal AppDelegate (registration is handled by `scripts/install.sh` since the app is sandboxed). Post-build script calls `install.sh` to copy to `/Applications/`.
 - **mdqlPreview** — QuickLook Preview Extension (.appex). View-based preview (`QLIsDataBasedPreview=false`) using `WKWebView` + `WKScriptMessageHandler` + FileWatcher for live updates in Finder. Registered for `net.daringfireball.markdown` UTI.
 - **mdql-open-url** — Unsandboxed XPC service (`com.apple.product-type.xpc-service`). Embedded in mdql.app at `Contents/XPCServices/`. Exposes `OpenURLProtocol` with `open(_:withReply:)` (opens URLs in the default browser via `NSWorkspace`) and `readFile(at:withReply:)` (reads sibling files the extension sandbox can't access directly, e.g. when navigating to a linked `.md` file). No entitlements = no sandbox.
 - **mdqlTests** — Unit tests. Compiles mdqlPreview and mdql sources directly (not hosted tests) since app extensions can't be imported as modules by test bundles.
@@ -39,7 +39,7 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 
 ## Key Files
 
-- `scripts/install.sh` — Single source of truth for install + registration. Copies to ~/Applications, cleans stale lsregister/pluginkit entries, registers extension, launches app for pluginkit finalization.
+- `scripts/install.sh` — Single source of truth for install + registration. Copies to /Applications, cleans stale lsregister/pluginkit entries, registers extension, launches app for pluginkit finalization.
 - `Makefile` — `make install` builds Release, calls `install.sh`, verifies no duplicates. `make clean` cleans build artifacts.
 - `mdqlPreview/MarkdownRenderer.swift` — Core rendering. `render(markdown:title:showBackButton:)` for full HTML with CSS (renders back chevron + hover status bar when `showBackButton` is true), `renderBody()` for body-only HTML (used by innerHTML updates). `postProcessEscaping()` closes HTML-escape holes in swift-markdown's HTMLFormatter output (code blocks, inline code, headings, link hrefs). Uses `BundleAnchor` class for cross-target bundle resolution.
 - `mdqlPreview/Resources/preview.css` — Inkpad-derived design tokens. Uses CSS custom properties with `@media (prefers-color-scheme: dark)` for automatic dark mode. Key tokens: text `#3f3b3d`, bg `#f9f9f9`, links `#4183c4`. Also styles the hover link status bar and back button chrome.
@@ -69,7 +69,7 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 - **Xcode's RegisterWithLaunchServices re-registers from DerivedData after build scripts run.** The post-build script alone is not sufficient — `make install` runs `install.sh` again after xcodebuild completes to clean up re-registered DerivedData entries.
 - **The app sandbox prevents AppDelegate from running lsregister/qlmanage.** All registration logic must live in `scripts/install.sh` (unsandboxed). The AppDelegate is a no-op.
 - **pluginkit only discovers extensions when the host app is launched.** `lsregister -f -R` alone is not enough — `install.sh` must `open` the app and then quit it to finalize registration.
-- **`codesign --force --deep` breaks extension identity.** When re-signing the host app after copying to ~/Applications, use `--sign -` without `--deep` to preserve the extension's original signature.
+- **`codesign --force --deep` breaks extension identity.** When re-signing the host app after copying to /Applications, use `--sign -` without `--deep` to preserve the extension's original signature.
 - **Sandboxed QuickLook extensions cannot call `NSWorkspace.shared.open()`.** The extension sandbox profile is missing `(allow lsopen)`. Fix: unsandboxed XPC service embedded in `Contents/XPCServices/` that calls `NSWorkspace.shared.open()` on behalf of the extension via `NSXPCConnection(serviceName:)`.
 - **The QuickLook extension sandbox only grants read access to the initially-previewed file.** Following a relative `.md` link cannot use `String(contentsOf:)` on the sibling path — it fails with "don't have permission to view it." Fix: extend the unsandboxed XPC service with a `readFile(at:withReply:)` method and read sibling files through it.
 - **`WKNavigationDelegate` races with `loadHTMLString` on link-activated navigations.** When a user clicks a link, WKWebView's default navigation can clobber an in-flight `loadHTMLString` call. In `decidePolicyFor`, cancel all `.linkActivated` actions and let JS message handlers dispatch to Swift for both `openURL` (http/https) and `openMarkdown` (relative `.md`) — never `.allow` a link-activated navigation.
