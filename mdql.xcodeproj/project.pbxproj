@@ -53,6 +53,9 @@
 		I10000080000000000000008 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
 		I10000090000000000000009 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
 		I1000000000000000000000A /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = I50000010000000000000001 /* Markdown */; };
+		J10000010000000000000001 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
+		J10000020000000000000002 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
+		J10000030000000000000003 /* MainMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000020000000000000002 /* MainMenuTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -182,6 +185,8 @@
 		I20000010000000000000001 /* MarkdownWebController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWebController.swift; sourceTree = "<group>"; };
 		I20000020000000000000002 /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
 		I20000030000000000000003 /* DocumentWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentWindowController.swift; sourceTree = "<group>"; };
+		J20000010000000000000001 /* MainMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenu.swift; sourceTree = "<group>"; };
+		J20000020000000000000002 /* MainMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenuTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -235,6 +240,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000001 /* AppDelegate.swift */,
+				J20000010000000000000001 /* MainMenu.swift */,
 				I20000020000000000000002 /* MarkdownDocument.swift */,
 				I20000030000000000000003 /* DocumentWindowController.swift */,
 				D20000010000000000000001 /* FileWatcher.swift */,
@@ -264,6 +270,7 @@
 				A20000050000000000000005 /* MarkdownRendererTests.swift */,
 				D20000030000000000000003 /* FileWatcherTests.swift */,
 				E20000020000000000000002 /* PreviewControllerTests.swift */,
+				J20000020000000000000002 /* MainMenuTests.swift */,
 				A90000040000000000000004 /* Fixtures */,
 			);
 			path = mdqlTests;
@@ -542,6 +549,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000001 /* AppDelegate.swift in Sources */,
+				J10000010000000000000001 /* MainMenu.swift in Sources */,
 				I10000040000000000000004 /* MarkdownDocument.swift in Sources */,
 				I10000050000000000000005 /* DocumentWindowController.swift in Sources */,
 				I10000020000000000000002 /* MarkdownWebController.swift in Sources */,
@@ -574,6 +582,8 @@
 				D10000090000000000000009 /* FileWatcher.swift in Sources */,
 				E10000020000000000000002 /* PreviewControllerTests.swift in Sources */,
 				H10000060000000000000006 /* OpenURLProtocol.swift in Sources */,
+				J10000020000000000000002 /* MainMenu.swift in Sources */,
+				J10000030000000000000003 /* MainMenuTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
