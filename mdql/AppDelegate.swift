@@ -15,7 +15,7 @@ enum Main {
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        configureMainMenu()
+        NSApp.mainMenu = MainMenu.make()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,26 +32,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         NSDocumentController.shared.openDocument(nil)
         return true
-    }
-
-    private func configureMainMenu() {
-        let mainMenu = NSMenu()
-
-        let appMenuItem = NSMenuItem(title: "mdql", action: nil, keyEquivalent: "")
-        mainMenu.addItem(appMenuItem)
-
-        let appMenu = NSMenu(title: "mdql")
-        appMenu.autoenablesItems = false
-        appMenuItem.submenu = appMenu
-
-        let quitItem = NSMenuItem(
-            title: "Quit",
-            action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q"
-        )
-        quitItem.target = NSApp
-        appMenu.addItem(quitItem)
-
-        NSApp.mainMenu = mainMenu
     }
 }
