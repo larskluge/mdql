@@ -56,6 +56,53 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("<input type=\"checkbox\""), "Should contain checkbox input")
     }
 
+    // MARK: - Interactive checkboxes (host app mode)
+
+    func testInteractiveModeAddsDataIndexToCheckboxes() {
+        let md = """
+        - [ ] one
+        - [x] two
+        """
+        let html = MarkdownRenderer.render(markdown: md, interactive: true)
+        XCTAssertTrue(html.contains("data-cb-index=\"0\""),
+                      "First checkbox should have data-cb-index=\"0\"")
+        XCTAssertTrue(html.contains("data-cb-index=\"1\""),
+                      "Second checkbox should have data-cb-index=\"1\"")
+    }
+
+    func testInteractiveModeStripsDisabledAttribute() {
+        let md = "- [ ] task\n"
+        let html = MarkdownRenderer.render(markdown: md, interactive: true)
+        XCTAssertFalse(html.contains("disabled"),
+                       "Interactive mode should not have disabled attribute on checkboxes")
+    }
+
+    func testNonInteractiveModeIsUnchanged() {
+        let md = "- [ ] task\n"
+        let html = MarkdownRenderer.render(markdown: md) // default interactive=false
+        XCTAssertFalse(html.contains("data-cb-index=\""),
+                       "Non-interactive mode should not add data-cb-index attribute")
+        XCTAssertTrue(html.contains("disabled"),
+                      "Non-interactive mode keeps disabled attribute")
+    }
+
+    func testInteractiveModeIncludesToggleClickHandler() {
+        let md = "- [ ] task\n"
+        let html = MarkdownRenderer.render(markdown: md, interactive: true)
+        XCTAssertTrue(html.contains("toggleCheckbox"),
+                      "Interactive mode should include the toggle JS handler")
+    }
+
+    func testRenderBodyAddsDataIndexInInteractiveMode() {
+        // renderBody is used by FileWatcher for innerHTML updates — must
+        // assign the same indices so click handlers re-bind correctly.
+        let md = "- [ ] one\n- [ ] two\n"
+        let body = MarkdownRenderer.renderBody(markdown: md, interactive: true)
+        XCTAssertTrue(body.contains("data-cb-index=\"0\""))
+        XCTAssertTrue(body.contains("data-cb-index=\"1\""))
+        XCTAssertFalse(body.contains("disabled"))
+    }
+
     func testRenderGFMStrikethrough() {
         let md = "This is ~~deleted~~ text."
         let html = MarkdownRenderer.render(markdown: md)

@@ -30,12 +30,20 @@ final class DocumentWindowController: NSWindowController {
         controller.webView.autoresizingMask = [.width, .height]
         window.contentView = controller.webView
 
+        controller.interactive = true
         controller.openURL = { url in
             NSWorkspace.shared.open(url)
         }
         controller.readFile = { url, completion in
             let content = try? String(contentsOf: url, encoding: .utf8)
             completion(content)
+        }
+        controller.toggleCheckbox = { [weak self] index, _, completion in
+            guard let url = self?.controller.fileURL else { completion(false); return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let ok = CheckboxToggle.toggle(fileAt: url, index: index)
+                DispatchQueue.main.async { completion(ok) }
+            }
         }
     }
 

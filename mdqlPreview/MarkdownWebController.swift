@@ -21,6 +21,16 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// or nil on failure. Default is a no-op (no callback).
     var readFile: (URL, @escaping (String?) -> Void) -> Void = { _, _ in }
 
+    /// Toggles the `index`-th task-list checkbox in the currently loaded file.
+    /// Calls back with `true` on success, `false` on failure. Host-app injects
+    /// the file-mutating implementation; the QuickLook extension leaves it as
+    /// the default no-op (it can't write files).
+    var toggleCheckbox: (Int, Bool, @escaping (Bool) -> Void) -> Void = { _, _, completion in completion(false) }
+
+    /// When true, rendered HTML enables clickable checkboxes (host app mode).
+    /// Default false (QuickLook extension is read-only).
+    var interactive: Bool = false
+
     override init() {
         let config = WKWebViewConfiguration()
         self.webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
@@ -41,7 +51,9 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// `openMarkdown` go through the injected `readFile` closure.
     @discardableResult
     func loadMarkdownFile(at url: URL) throws -> Bool {
-        let html = try MarkdownRenderer.render(fileAt: url)
+        let markdown = try String(contentsOf: url, encoding: .utf8)
+        let title = url.deletingPathExtension().lastPathComponent
+        let html = MarkdownRenderer.render(markdown: markdown, title: title, interactive: interactive)
         fileWatcher?.stop()
         fileURL = url
         fileHistory.removeAll()
@@ -54,6 +66,19 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     func handleOpenURL(_ urlString: String, background: Bool) {
         guard let url = URL(string: urlString), !urlString.isEmpty else { return }
         openURL(url)
+    }
+
+    /// Handles a toggleCheckbox action posted from JS. Exposed for testing.
+    /// On failure, reverts the checkbox in the rendered page and shows a toast.
+    func handleToggleCheckbox(index: Int, checked: Bool) {
+        toggleCheckbox(index, checked) { [weak self] success in
+            guard !success, let self = self else { return }
+            DispatchQueue.main.async {
+                self.webView.evaluateJavaScript(
+                    "window.__mdqlRevertCheckbox && window.__mdqlRevertCheckbox(\(index)); window.__mdqlShowToast && window.__mdqlShowToast('Couldn\\'t save change');"
+                )
+            }
+        }
     }
 
     /// Handles an openMarkdown action. Exposed for testing.
@@ -87,7 +112,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         fileWatcher?.stop()
         fileURL = url
         let title = url.deletingPathExtension().lastPathComponent
-        let html = MarkdownRenderer.render(markdown: markdown, title: title, showBackButton: !fileHistory.isEmpty)
+        let html = MarkdownRenderer.render(markdown: markdown, title: title, showBackButton: !fileHistory.isEmpty, interactive: interactive)
         webView.loadHTMLString(html, baseURL: nil)
         startWatching(url)
     }
@@ -103,7 +128,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         guard let url = fileURL else { return }
         readFile(url) { [weak self] markdown in
             guard let self = self, let markdown = markdown else { return }
-            let bodyHTML = MarkdownRenderer.renderBody(markdown: markdown)
+            let bodyHTML = MarkdownRenderer.renderBody(markdown: markdown, interactive: self.interactive)
             let base64 = Data(bodyHTML.utf8).base64EncodedString()
             self.webView.evaluateJavaScript(
                 "document.querySelector('.markdown-body').innerHTML = new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0)))"
@@ -129,6 +154,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             }
         case "goBack":
             goBack()
+        case "toggleCheckbox":
+            if let index = body["index"] as? Int {
+                let checked = body["checked"] as? Bool ?? false
+                handleToggleCheckbox(index: index, checked: checked)
+            }
         default:
             break
         }

@@ -15,19 +15,19 @@ public struct MarkdownRenderer {
         return render(markdown: markdown, title: title)
     }
 
-    public static func render(markdown: String, title: String = "", showBackButton: Bool = false) -> String {
+    public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
-        let html = postProcessEscaping(HTMLFormatter.format(document))
+        let html = postProcessCheckboxes(postProcessEscaping(HTMLFormatter.format(document)), interactive: interactive)
         let frontMatterHTML = renderFrontMatter(frontMatter)
-        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton)
+        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton, interactive: interactive)
     }
 
-    public static func renderBody(markdown: String) -> String {
+    public static func renderBody(markdown: String, interactive: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         let frontMatterHTML = renderFrontMatter(frontMatter)
-        return frontMatterHTML + postProcessEscaping(HTMLFormatter.format(document))
+        return frontMatterHTML + postProcessCheckboxes(postProcessEscaping(HTMLFormatter.format(document)), interactive: interactive)
     }
 
     // MARK: - HTML Escaping
@@ -35,6 +35,25 @@ public struct MarkdownRenderer {
     // (CodeBlock.code, InlineCode.code, Heading.plainText, Link.destination). We
     // post-process its output to close those holes. See docs/superpowers/specs/
     // 2026-04-17-html-escaping-fix-design.md.
+
+    // MARK: - Interactive Checkboxes
+    // When `interactive` is true (host app), strip `disabled` from task-list
+    // checkboxes and assign each one a sequential `data-cb-index` attribute so
+    // JS can identify them and Swift can map clicks back to the source file.
+
+    static func postProcessCheckboxes(_ html: String, interactive: Bool) -> String {
+        guard interactive else { return html }
+        var index = 0
+        return replaceRegex(in: html, pattern: #"<input([^>]*?type="checkbox"[^>]*?)\s*/?>"#) { groups in
+            var attrs = groups[1]
+            attrs = attrs.replacingOccurrences(of: #" disabled="""#, with: "")
+            attrs = attrs.replacingOccurrences(of: " disabled=''", with: "")
+            attrs = attrs.replacingOccurrences(of: " disabled", with: "")
+            let result = "<input\(attrs) data-cb-index=\"\(index)\">"
+            index += 1
+            return result
+        }
+    }
 
     static func postProcessEscaping(_ html: String) -> String {
         var out = html
@@ -159,12 +178,31 @@ public struct MarkdownRenderer {
         return "<div class=\"front-matter\">\(items.joined(separator: " <span class=\"fm-sep\">·</span> "))</div>\n"
     }
 
-    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false) -> String {
+    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
         let backButtonHTML = showBackButton ? """
         <div id="mdql-back" onclick="window.webkit.messageHandlers.mdql.postMessage({action:'goBack'})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
+        """ : ""
+        let interactiveCheckboxJS = interactive ? """
+
+            document.addEventListener('change', function(e) {
+                var el = e.target;
+                if (el && el.matches && el.matches('input[type="checkbox"][data-cb-index]')) {
+                    var idx = parseInt(el.getAttribute('data-cb-index'), 10);
+                    window.webkit.messageHandlers.mdql.postMessage({
+                        action: "toggleCheckbox",
+                        index: idx,
+                        checked: el.checked
+                    });
+                }
+            });
+
+            window.__mdqlRevertCheckbox = function(index) {
+                var el = document.querySelector('input[type="checkbox"][data-cb-index="' + index + '"]');
+                if (el) el.checked = !el.checked;
+            };
         """ : ""
         return """
         <!DOCTYPE html>
@@ -307,6 +345,7 @@ public struct MarkdownRenderer {
                     });
                 }
             });
+        \(interactiveCheckboxJS)
         })();
         </script>
         </body>

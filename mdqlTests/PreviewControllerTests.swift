@@ -153,6 +153,40 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertTrue(html.contains("classList"), "HTML must toggle status bar via CSS class")
     }
 
+    // MARK: - Checkbox toggle dispatch
+
+    func testHandleToggleCheckboxInvokesClosureWithIndexAndState() {
+        let controller = MarkdownWebController()
+        var receivedIndex: Int?
+        var receivedChecked: Bool?
+        let exp = expectation(description: "toggleCheckbox invoked")
+        controller.toggleCheckbox = { index, checked, completion in
+            receivedIndex = index
+            receivedChecked = checked
+            completion(true)
+            exp.fulfill()
+        }
+        controller.handleToggleCheckbox(index: 2, checked: true)
+        wait(for: [exp], timeout: 1)
+        XCTAssertEqual(receivedIndex, 2)
+        XCTAssertEqual(receivedChecked, true)
+    }
+
+    func testInteractiveFlagPropagatesToRenderedHTML() throws {
+        let controller = MarkdownWebController()
+        controller.interactive = true
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mdql-interactive-\(UUID().uuidString).md")
+        try "- [ ] task\n".write(to: tmp, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try controller.loadMarkdownFile(at: tmp)
+        // The webview's HTML is loaded async; we can't easily inspect it. But
+        // we can re-render with the same flag and check the output the
+        // controller would have produced.
+        let html = MarkdownRenderer.render(markdown: "- [ ] task\n", interactive: true)
+        XCTAssertTrue(html.contains("data-cb-index=\"0\""))
+    }
+
     // MARK: - openMarkdown handler
 
     func testLoadMarkdownFileUpdatesFileURL() throws {

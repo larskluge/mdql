@@ -56,6 +56,12 @@
 		J10000010000000000000001 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
 		J10000020000000000000002 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
 		J10000030000000000000003 /* MainMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000020000000000000002 /* MainMenuTests.swift */; };
+		K10000010000000000000001 /* MarkdownCheckboxScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000010000000000000001 /* MarkdownCheckboxScanner.swift */; };
+		K10000020000000000000002 /* MarkdownCheckboxScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000010000000000000001 /* MarkdownCheckboxScanner.swift */; };
+		K10000030000000000000003 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
+		K10000040000000000000004 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
+		K10000050000000000000005 /* MarkdownCheckboxScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000030000000000000003 /* MarkdownCheckboxScannerTests.swift */; };
+		K10000060000000000000006 /* CheckboxToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000040000000000000004 /* CheckboxToggleTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -187,6 +193,10 @@
 		I20000030000000000000003 /* DocumentWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentWindowController.swift; sourceTree = "<group>"; };
 		J20000010000000000000001 /* MainMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenu.swift; sourceTree = "<group>"; };
 		J20000020000000000000002 /* MainMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenuTests.swift; sourceTree = "<group>"; };
+		K20000010000000000000001 /* MarkdownCheckboxScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCheckboxScanner.swift; sourceTree = "<group>"; };
+		K20000020000000000000002 /* CheckboxToggle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckboxToggle.swift; sourceTree = "<group>"; };
+		K20000030000000000000003 /* MarkdownCheckboxScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCheckboxScannerTests.swift; sourceTree = "<group>"; };
+		K20000040000000000000004 /* CheckboxToggleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckboxToggleTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -243,6 +253,8 @@
 				J20000010000000000000001 /* MainMenu.swift */,
 				I20000020000000000000002 /* MarkdownDocument.swift */,
 				I20000030000000000000003 /* DocumentWindowController.swift */,
+				K20000010000000000000001 /* MarkdownCheckboxScanner.swift */,
+				K20000020000000000000002 /* CheckboxToggle.swift */,
 				D20000010000000000000001 /* FileWatcher.swift */,
 				A20000100000000000000010 /* Assets.xcassets */,
 				A2000000000000000000000B /* Info.plist */,
@@ -271,6 +283,8 @@
 				D20000030000000000000003 /* FileWatcherTests.swift */,
 				E20000020000000000000002 /* PreviewControllerTests.swift */,
 				J20000020000000000000002 /* MainMenuTests.swift */,
+				K20000030000000000000003 /* MarkdownCheckboxScannerTests.swift */,
+				K20000040000000000000004 /* CheckboxToggleTests.swift */,
 				A90000040000000000000004 /* Fixtures */,
 			);
 			path = mdqlTests;
@@ -555,6 +569,8 @@
 				I10000020000000000000002 /* MarkdownWebController.swift in Sources */,
 				I10000060000000000000006 /* MarkdownRenderer.swift in Sources */,
 				I10000070000000000000007 /* FileWatcher.swift in Sources */,
+				K10000010000000000000001 /* MarkdownCheckboxScanner.swift in Sources */,
+				K10000030000000000000003 /* CheckboxToggle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -584,6 +600,10 @@
 				H10000060000000000000006 /* OpenURLProtocol.swift in Sources */,
 				J10000020000000000000002 /* MainMenu.swift in Sources */,
 				J10000030000000000000003 /* MainMenuTests.swift in Sources */,
+				K10000020000000000000002 /* MarkdownCheckboxScanner.swift in Sources */,
+				K10000040000000000000004 /* CheckboxToggle.swift in Sources */,
+				K10000050000000000000005 /* MarkdownCheckboxScannerTests.swift in Sources */,
+				K10000060000000000000006 /* CheckboxToggleTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

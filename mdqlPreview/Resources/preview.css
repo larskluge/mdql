@@ -192,6 +192,10 @@ input[type="checkbox"] {
     vertical-align: middle;
 }
 
+input[type="checkbox"][data-cb-index] {
+    cursor: pointer;
+}
+
 del {
     text-decoration: line-through;
 }
