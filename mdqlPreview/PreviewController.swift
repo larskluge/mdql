@@ -42,6 +42,14 @@ class PreviewController: NSViewController, QLPreviewingController {
                 DispatchQueue.main.async { completion(content) }
             }
         }
+        controller.interactive = true
+        controller.toggleCheckbox = { [weak self] index, _, completion in
+            guard let url = self?.controller.fileURL,
+                  let proxy = self?.xpcProxy else { completion(false); return }
+            proxy.toggleCheckbox(at: url.path, index: index) { success in
+                DispatchQueue.main.async { completion(success) }
+            }
+        }
     }
 
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {

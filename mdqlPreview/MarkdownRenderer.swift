@@ -187,7 +187,11 @@ public struct MarkdownRenderer {
         """ : ""
         let interactiveCheckboxJS = interactive ? """
 
-            document.addEventListener('change', function(e) {
+            // Optimistic toggle: own the visual flip in JS on click, BEFORE
+            // anything else. preventDefault stops the native toggle so the
+            // visible state changes exactly when we set it — no waiting on
+            // the browser's default-action + change-event chain.
+            document.addEventListener('click', function(e) {
                 var el = e.target;
                 if (el && el.matches && el.matches('input[type="checkbox"][data-cb-index]')) {
                     var idx = parseInt(el.getAttribute('data-cb-index'), 10);

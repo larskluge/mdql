@@ -14,4 +14,10 @@ class OpenURLService: NSObject, OpenURLProtocol {
             reply(nil, error.localizedDescription)
         }
     }
+
+    func toggleCheckbox(at path: String, index: Int, withReply reply: @escaping (Bool) -> Void) {
+        let url = URL(fileURLWithPath: path)
+        let ok = CheckboxToggle.toggle(fileAt: url, index: index)
+        reply(ok)
+    }
 }

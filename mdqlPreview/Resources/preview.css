@@ -188,12 +188,46 @@ li:has(> input[type="checkbox"]) > p {
 }
 
 input[type="checkbox"] {
-    margin-right: 0.5em;
-    vertical-align: middle;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid #b8b8b8;
+    background: transparent;
+    margin: 0 0.5em 0 0;
+    padding: 0;
+    vertical-align: -4px;
+    position: relative;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+input[type="checkbox"]:checked {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+}
+
+input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 0px;
+    width: 5px;
+    height: 10px;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
 }
 
 input[type="checkbox"][data-cb-index] {
     cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+    input[type="checkbox"] {
+        border-color: #5a5a5a;
+    }
 }
 
 del {

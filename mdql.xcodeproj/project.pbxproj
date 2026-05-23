@@ -62,6 +62,8 @@
 		K10000040000000000000004 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
 		K10000050000000000000005 /* MarkdownCheckboxScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000030000000000000003 /* MarkdownCheckboxScannerTests.swift */; };
 		K10000060000000000000006 /* CheckboxToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000040000000000000004 /* CheckboxToggleTests.swift */; };
+		K10000070000000000000007 /* MarkdownCheckboxScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000010000000000000001 /* MarkdownCheckboxScanner.swift */; };
+		K10000080000000000000008 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -624,6 +626,8 @@
 				H10000020000000000000002 /* OpenURLService.swift in Sources */,
 				H10000030000000000000003 /* OpenURLDelegate.swift in Sources */,
 				H10000040000000000000004 /* main.swift in Sources */,
+				K10000070000000000000007 /* MarkdownCheckboxScanner.swift in Sources */,
+				K10000080000000000000008 /* CheckboxToggle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
