@@ -16,11 +16,13 @@ final class DocumentWindowController: NSWindowController {
         let initialFrame = NSRect(origin: .zero, size: Self.defaultContentSize())
         let window = MarkdownWindow(
             contentRect: initialFrame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.isReleasedWhenClosed = false
         if !window.setFrameUsingName(Self.frameAutosaveName) {
             window.setFrame(Self.defaultWindowFrame(for: window), display: false)

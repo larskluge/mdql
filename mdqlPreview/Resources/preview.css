@@ -31,8 +31,20 @@ body {
     color: var(--text-color);
     background-color: var(--bg-color);
     margin: 0;
-    padding: 30px;
+    padding: 60px 30px 30px;
     -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background: linear-gradient(to bottom, var(--bg-color) 0%, var(--bg-color) 55%, transparent 100%);
+    pointer-events: none;
+    z-index: 100;
 }
 
 .markdown-body {
