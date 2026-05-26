@@ -7,6 +7,7 @@ import WebKit
 final class DocumentWindowController: NSWindowController {
 
     private static let frameAutosaveName = "MarkdownDocumentWindow"
+    private static let zedBundleIdentifier = "dev.zed.Zed"
 
     private let controller = MarkdownWebController()
     private var loadedURL: URL?
@@ -45,6 +46,8 @@ final class DocumentWindowController: NSWindowController {
                 DispatchQueue.main.async { completion(ok) }
             }
         }
+
+        installToolbar(on: window)
     }
 
     private static func defaultContentSize() -> NSSize {
@@ -85,6 +88,114 @@ final class DocumentWindowController: NSWindowController {
             window?.representedURL = nil
             window?.representedFilename = ""
         }
+    }
+
+    private func installToolbar(on window: NSWindow) {
+        let toolbar = NSToolbar(identifier: "MarkdownDocumentToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        toolbar.autosavesConfiguration = false
+        toolbar.showsBaselineSeparator = false
+        window.toolbarStyle = .unifiedCompact
+        window.toolbar = toolbar
+    }
+
+    @objc fileprivate func showSharePicker(_ sender: NSView) {
+        guard let url = controller.fileURL else { return }
+        let picker = NSSharingServicePicker(items: [url])
+        picker.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+    }
+
+    @objc fileprivate func openInZed(_ sender: Any?) {
+        guard let url = controller.fileURL else { return }
+        guard let zedURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.zedBundleIdentifier) else {
+            let alert = NSAlert()
+            alert.messageText = "Zed isn’t installed"
+            alert.informativeText = "Install Zed from https://zed.dev to open Markdown files in it."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.open(
+            [url],
+            withApplicationAt: zedURL,
+            configuration: configuration,
+            completionHandler: nil
+        )
+    }
+}
+
+extension DocumentWindowController: NSToolbarDelegate {
+
+    fileprivate static let shareItemID = NSToolbarItem.Identifier("net.daringfireball.markdown.share")
+    fileprivate static let openInZedItemID = NSToolbarItem.Identifier("net.daringfireball.markdown.openInZed")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.shareItemID, Self.openInZedItemID]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.shareItemID, Self.openInZedItemID]
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        switch itemIdentifier {
+        case Self.shareItemID:
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            let image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Share")?
+                .withSymbolConfiguration(symbolConfig)
+            let button = NSButton(image: image ?? NSImage(), target: self, action: #selector(showSharePicker(_:)))
+            button.isBordered = false
+            button.bezelStyle = .accessoryBarAction
+            button.controlSize = .small
+            button.imagePosition = .imageOnly
+            button.sizeToFit()
+
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "Share"
+            item.paletteLabel = "Share"
+            item.toolTip = "Share"
+            item.view = button
+            item.isBordered = false
+            item.backgroundTintColor = .clear
+            return item
+
+        case Self.openInZedItemID:
+            let button = PaddedPillButton(title: "Open with Zed", target: self, action: #selector(openInZed(_:)))
+            button.bezelStyle = .flexiblePush
+            button.controlSize = .regular
+            button.horizontalPadding = 15
+
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "Open with Zed"
+            item.paletteLabel = "Open with Zed"
+            item.toolTip = "Open the current document in Zed"
+            item.view = button
+            item.isBordered = false
+            item.backgroundTintColor = .clear
+            return item
+
+        default:
+            return nil
+        }
+    }
+}
+
+private final class PaddedPillButton: NSButton {
+    var horizontalPadding: CGFloat = 0 {
+        didSet { invalidateIntrinsicContentSize() }
+    }
+    override var intrinsicContentSize: NSSize {
+        var s = super.intrinsicContentSize
+        s.width += horizontalPadding * 2
+        return s
     }
 }
 

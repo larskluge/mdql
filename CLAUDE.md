@@ -52,7 +52,7 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 ## Project Constraints
 
 - Xcode project (not SPM) because Quick Look extensions require `.appex` embedded in `.app`
-- Deployment target: macOS 12.0
+- Deployment target: macOS 26.0
 - App sandbox enabled on both host app and extension; extension has read-only file access
 - CSS is loaded from the bundle at runtime via `Bundle(for: BundleAnchor.self)`
 - **WKWebView only. Never use legacy `WebView`.** The entire project uses `WKWebView` exclusively (mdqlPreview extension, mdql-screenshot CLI, and any future targets). The deprecated `WebView` class must never be introduced — it was fully removed and replaced by `WKWebView` with the `com.apple.security.network.client` entitlement.
