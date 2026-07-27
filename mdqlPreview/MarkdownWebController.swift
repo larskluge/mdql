@@ -22,14 +22,18 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     var readFile: (URL, @escaping (String?) -> Void) -> Void = { _, _ in }
 
     /// Toggles the `index`-th task-list checkbox in the currently loaded file.
-    /// Calls back with `true` on success, `false` on failure. Host-app injects
-    /// the file-mutating implementation; the QuickLook extension leaves it as
-    /// the default no-op (it can't write files).
+    /// Calls back with `true` on success, `false` on failure. The host app
+    /// writes the file directly; the QuickLook extension goes through XPC.
     var toggleCheckbox: (Int, Bool, @escaping (Bool) -> Void) -> Void = { _, _, completion in completion(false) }
 
-    /// When true, rendered HTML enables clickable checkboxes (host app mode).
-    /// Default false (QuickLook extension is read-only).
+    /// When true, rendered HTML enables clickable checkboxes. Both hosts set
+    /// this; it says nothing about which one is rendering.
     var interactive: Bool = false
+
+    /// When true, the page leaves headroom under the host app's transparent
+    /// titlebar and fades content into it. QuickLook draws no chrome of its
+    /// own, so it stays false there.
+    var appChrome: Bool = false
 
     override init() {
         let config = WKWebViewConfiguration()
@@ -53,7 +57,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     func loadMarkdownFile(at url: URL) throws -> Bool {
         let markdown = try String(contentsOf: url, encoding: .utf8)
         let title = url.deletingPathExtension().lastPathComponent
-        let html = MarkdownRenderer.render(markdown: markdown, title: title, interactive: interactive)
+        let html = MarkdownRenderer.render(markdown: markdown, title: title, interactive: interactive, appChrome: appChrome)
         fileWatcher?.stop()
         fileURL = url
         fileHistory.removeAll()
@@ -112,7 +116,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         fileWatcher?.stop()
         fileURL = url
         let title = url.deletingPathExtension().lastPathComponent
-        let html = MarkdownRenderer.render(markdown: markdown, title: title, showBackButton: !fileHistory.isEmpty, interactive: interactive)
+        let html = MarkdownRenderer.render(markdown: markdown, title: title, showBackButton: !fileHistory.isEmpty, interactive: interactive, appChrome: appChrome)
         webView.loadHTMLString(html, baseURL: nil)
         startWatching(url)
     }

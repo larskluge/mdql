@@ -15,12 +15,12 @@ public struct MarkdownRenderer {
         return render(markdown: markdown, title: title)
     }
 
-    public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false) -> String {
+    public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         let html = postProcessCheckboxes(postProcessEscaping(HTMLFormatter.format(document)), interactive: interactive)
         let frontMatterHTML = renderFrontMatter(frontMatter)
-        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton, interactive: interactive)
+        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton, interactive: interactive, appChrome: appChrome)
     }
 
     public static func renderBody(markdown: String, interactive: Bool = false) -> String {
@@ -37,7 +37,7 @@ public struct MarkdownRenderer {
     // 2026-04-17-html-escaping-fix-design.md.
 
     // MARK: - Interactive Checkboxes
-    // When `interactive` is true (host app), strip `disabled` from task-list
+    // When `interactive` is true, strip `disabled` from task-list
     // checkboxes and assign each one a sequential `data-cb-index` attribute so
     // JS can identify them and Swift can map clicks back to the source file.
 
@@ -178,11 +178,11 @@ public struct MarkdownRenderer {
         return "<div class=\"front-matter\">\(items.joined(separator: " <span class=\"fm-sep\">·</span> "))</div>\n"
     }
 
-    /// `interactive` marks host-app rendering: it enables the checkbox JS and
-    /// tags `<body class="mdql-app">`, which is what scopes the titlebar
-    /// headroom and fade in preview.css to the standalone window (QuickLook
-    /// draws no chrome, so it gets neither).
-    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false) -> String {
+    /// `appChrome` tags `<body class="mdql-app">`, which is what scopes the
+    /// titlebar headroom and top fade in preview.css to the standalone window.
+    /// It is deliberately separate from `interactive` — QuickLook renders
+    /// interactive too, but draws no chrome to make room for.
+    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
@@ -265,7 +265,7 @@ public struct MarkdownRenderer {
         }
         </style>
         </head>
-        <body\(interactive ? " class=\"mdql-app\"" : "")>
+        <body\(appChrome ? " class=\"mdql-app\"" : "")>
         \(backButtonHTML)
         <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
         <div id="mdql-loading"></div>

@@ -187,6 +187,15 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertTrue(html.contains("data-cb-index=\"0\""))
     }
 
+    func testPreviewDoesNotUseHostAppChrome() {
+        // QuickLook draws no titlebar of its own — reserving headroom and
+        // fading content into it would just be dead space at the top.
+        let controller = PreviewController()
+        controller.loadView()
+        XCTAssertFalse(controller.appChrome,
+                       "The QuickLook preview must not render host app titlebar chrome")
+    }
+
     // MARK: - openMarkdown handler
 
     func testLoadMarkdownFileUpdatesFileURL() throws {

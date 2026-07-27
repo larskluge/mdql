@@ -93,24 +93,30 @@ final class MarkdownRendererTests: XCTestCase {
                       "Interactive mode should include the toggle JS handler")
     }
 
-    // MARK: - Titlebar chrome (host app only)
+    // MARK: - Titlebar chrome (host app window only)
 
-    func testInteractiveModeTagsBodyForAppChrome() {
-        let html = MarkdownRenderer.render(markdown: "# Title", interactive: true)
+    func testAppChromeTagsBody() {
+        let html = MarkdownRenderer.render(markdown: "# Title", appChrome: true)
         XCTAssertTrue(html.contains("<body class=\"mdql-app\">"),
                       "Host app rendering must tag <body> so the titlebar headroom applies")
     }
 
-    func testNonInteractiveModeHasNoAppChromeClass() {
+    func testInteractiveAloneDoesNotAddAppChrome() {
+        // QuickLook renders interactive too — its checkboxes toggle through XPC —
+        // but it draws no titlebar, so it must not reserve headroom for one.
+        let html = MarkdownRenderer.render(markdown: "# Title", interactive: true)
+        XCTAssertFalse(html.contains("<body class="),
+                       "Interactive rendering alone must not opt into host app chrome")
+    }
+
+    func testDefaultRenderHasNoAppChrome() {
         let html = MarkdownRenderer.render(markdown: "# Title")
         XCTAssertTrue(html.contains("<body>"),
-                      "QuickLook rendering must leave <body> untagged")
-        XCTAssertFalse(html.contains("<body class="),
-                       "QuickLook has no titlebar — it must not get the app chrome spacing")
+                      "Plain rendering must leave <body> untagged")
     }
 
     func testAppChromeSpacingIsScopedToAppClass() {
-        let html = MarkdownRenderer.render(markdown: "# Title", interactive: true)
+        let html = MarkdownRenderer.render(markdown: "# Title", appChrome: true)
         XCTAssertTrue(html.contains("body.mdql-app::before"),
                       "The titlebar gradient must be scoped to body.mdql-app, not bare body")
         XCTAssertFalse(html.contains("padding: 60px"),

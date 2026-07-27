@@ -34,6 +34,7 @@ final class DocumentWindowController: NSWindowController {
         window.contentView = controller.webView
 
         controller.interactive = true
+        controller.appChrome = true
         controller.openURL = { url in
             NSWorkspace.shared.open(url)
         }

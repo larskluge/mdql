@@ -17,6 +17,10 @@ class PreviewController: NSViewController, QLPreviewingController {
     /// most-recently shown file, not necessarily the initial one).
     var fileURL: URL? { controller.fileURL }
 
+    /// Whether the rendered page reserves room for a host window titlebar.
+    /// Always false here — QuickLook draws no chrome. Exposed for testing.
+    var appChrome: Bool { controller.appChrome }
+
     deinit {
         xpcConnection?.invalidate()
     }
