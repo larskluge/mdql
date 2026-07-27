@@ -93,6 +93,30 @@ final class MarkdownRendererTests: XCTestCase {
                       "Interactive mode should include the toggle JS handler")
     }
 
+    // MARK: - Titlebar chrome (host app only)
+
+    func testInteractiveModeTagsBodyForAppChrome() {
+        let html = MarkdownRenderer.render(markdown: "# Title", interactive: true)
+        XCTAssertTrue(html.contains("<body class=\"mdql-app\">"),
+                      "Host app rendering must tag <body> so the titlebar headroom applies")
+    }
+
+    func testNonInteractiveModeHasNoAppChromeClass() {
+        let html = MarkdownRenderer.render(markdown: "# Title")
+        XCTAssertTrue(html.contains("<body>"),
+                      "QuickLook rendering must leave <body> untagged")
+        XCTAssertFalse(html.contains("<body class="),
+                       "QuickLook has no titlebar — it must not get the app chrome spacing")
+    }
+
+    func testAppChromeSpacingIsScopedToAppClass() {
+        let html = MarkdownRenderer.render(markdown: "# Title", interactive: true)
+        XCTAssertTrue(html.contains("body.mdql-app::before"),
+                      "The titlebar gradient must be scoped to body.mdql-app, not bare body")
+        XCTAssertFalse(html.contains("padding: 60px"),
+                       "Bare body must not carry the titlebar top padding")
+    }
+
     func testRenderBodyAddsDataIndexInInteractiveMode() {
         // renderBody is used by FileWatcher for innerHTML updates — must
         // assign the same indices so click handlers re-bind correctly.

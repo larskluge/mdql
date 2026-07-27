@@ -31,11 +31,19 @@ body {
     color: var(--text-color);
     background-color: var(--bg-color);
     margin: 0;
-    padding: 60px 30px 30px;
+    padding: 30px;
     -webkit-font-smoothing: antialiased;
 }
 
-body::before {
+/* Host app only (`body.mdql-app`): the standalone window draws a transparent
+   full-size titlebar, so the document needs headroom under the toolbar plus a
+   fade so scrolled text doesn't collide with it. QuickLook has no chrome of
+   its own — there the extra spacing and gradient would just be dead space. */
+body.mdql-app {
+    padding-top: 60px;
+}
+
+body.mdql-app::before {
     content: '';
     position: fixed;
     top: 0;

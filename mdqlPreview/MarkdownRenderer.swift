@@ -178,6 +178,10 @@ public struct MarkdownRenderer {
         return "<div class=\"front-matter\">\(items.joined(separator: " <span class=\"fm-sep\">·</span> "))</div>\n"
     }
 
+    /// `interactive` marks host-app rendering: it enables the checkbox JS and
+    /// tags `<body class="mdql-app">`, which is what scopes the titlebar
+    /// headroom and fade in preview.css to the standalone window (QuickLook
+    /// draws no chrome, so it gets neither).
     private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
@@ -261,7 +265,7 @@ public struct MarkdownRenderer {
         }
         </style>
         </head>
-        <body>
+        <body\(interactive ? " class=\"mdql-app\"" : "")>
         \(backButtonHTML)
         <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
         <div id="mdql-loading"></div>
