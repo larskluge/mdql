@@ -48,6 +48,8 @@
 		I10000030000000000000003 /* MarkdownWebController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000010000000000000001 /* MarkdownWebController.swift */; };
 		I10000040000000000000004 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000020000000000000002 /* MarkdownDocument.swift */; };
 		I10000050000000000000005 /* DocumentWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000030000000000000003 /* DocumentWindowController.swift */; };
+		I1000000A000000000000000A /* DocumentWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000030000000000000003 /* DocumentWindowController.swift */; };
+		I1000000B000000000000000B /* DocumentWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000040000000000000004 /* DocumentWindowControllerTests.swift */; };
 		I10000060000000000000006 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
 		I10000070000000000000007 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* FileWatcher.swift */; };
 		I10000080000000000000008 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
@@ -193,6 +195,7 @@
 		I20000010000000000000001 /* MarkdownWebController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownWebController.swift; sourceTree = "<group>"; };
 		I20000020000000000000002 /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
 		I20000030000000000000003 /* DocumentWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentWindowController.swift; sourceTree = "<group>"; };
+		I20000040000000000000004 /* DocumentWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentWindowControllerTests.swift; sourceTree = "<group>"; };
 		J20000010000000000000001 /* MainMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenu.swift; sourceTree = "<group>"; };
 		J20000020000000000000002 /* MainMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenuTests.swift; sourceTree = "<group>"; };
 		K20000010000000000000001 /* MarkdownCheckboxScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCheckboxScanner.swift; sourceTree = "<group>"; };
@@ -284,6 +287,7 @@
 				A20000050000000000000005 /* MarkdownRendererTests.swift */,
 				D20000030000000000000003 /* FileWatcherTests.swift */,
 				E20000020000000000000002 /* PreviewControllerTests.swift */,
+				I20000040000000000000004 /* DocumentWindowControllerTests.swift */,
 				J20000020000000000000002 /* MainMenuTests.swift */,
 				K20000030000000000000003 /* MarkdownCheckboxScannerTests.swift */,
 				K20000040000000000000004 /* CheckboxToggleTests.swift */,
@@ -596,6 +600,8 @@
 				A1000000000000000000000C /* MarkdownRenderer.swift in Sources */,
 				A1000000000000000000000E /* PreviewController.swift in Sources */,
 				I10000030000000000000003 /* MarkdownWebController.swift in Sources */,
+				I1000000A000000000000000A /* DocumentWindowController.swift in Sources */,
+				I1000000B000000000000000B /* DocumentWindowControllerTests.swift in Sources */,
 				D10000070000000000000007 /* FileWatcherTests.swift in Sources */,
 				D10000090000000000000009 /* FileWatcher.swift in Sources */,
 				E10000020000000000000002 /* PreviewControllerTests.swift in Sources */,
@@ -988,8 +994,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/swiftlang/swift-markdown.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = 27b7fc1a19068bcea3d2072db0ce86360d1400ed;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

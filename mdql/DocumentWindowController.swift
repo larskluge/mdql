@@ -10,7 +10,6 @@ final class DocumentWindowController: NSWindowController {
     private static let zedBundleIdentifier = "dev.zed.Zed"
 
     private let controller = MarkdownWebController()
-    private var loadedURL: URL?
 
     convenience init() {
         let initialFrame = NSRect(origin: .zero, size: Self.defaultContentSize())
@@ -35,6 +34,9 @@ final class DocumentWindowController: NSWindowController {
 
         controller.interactive = true
         controller.appChrome = true
+        controller.fileURLDidChange = { [weak self] _ in
+            self?.synchronizeWindowTitleWithDocumentName()
+        }
         controller.openURL = { url in
             NSWorkspace.shared.open(url)
         }
@@ -74,23 +76,29 @@ final class DocumentWindowController: NSWindowController {
         return frame
     }
 
-    /// Loads a markdown file into the window's web view.
+    /// Loads a markdown file into the window's web view. The title follows via
+    /// `fileURLDidChange`, which also covers the files reached later by
+    /// following links inside the preview.
     func load(fileAt url: URL) throws {
         try controller.loadMarkdownFile(at: url)
-        loadedURL = url
-        synchronizeWindowTitleWithDocumentName()
     }
 
+    /// Titles the window with the file actually on screen, which is not always
+    /// the document's own URL — following a link inside the preview swaps the
+    /// rendered file without opening a new document.
+    ///
+    /// `representedURL` is what earns the title its Finder-style path menu:
+    /// right- or ⌘-clicking the file name lists every ancestor folder up to the
+    /// volume, and picking one opens it in Finder. AppKit draws and drives that
+    /// menu, so there is nothing else to wire up.
     override func synchronizeWindowTitleWithDocumentName() {
-        if let loadedURL, let window {
-            window.title = loadedURL.lastPathComponent
-            window.representedURL = nil
-            window.representedFilename = ""
-        } else {
+        guard let window else { return }
+        guard let url = controller.fileURL else {
             super.synchronizeWindowTitleWithDocumentName()
-            window?.representedURL = nil
-            window?.representedFilename = ""
+            return
         }
+        window.representedURL = url
+        window.title = url.lastPathComponent
     }
 
     private func installToolbar(on window: NSWindow) {

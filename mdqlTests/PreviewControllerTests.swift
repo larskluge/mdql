@@ -239,6 +239,33 @@ final class PreviewControllerTests: XCTestCase {
                        "Should not navigate to non-markdown files")
     }
 
+    func testFileURLDidChangeFiresWhenFollowingALinkToAnotherFile() throws {
+        // The host app titles its window from this callback. Without it the
+        // titlebar — and the path menu behind it — keeps naming the file the
+        // reader has already navigated away from.
+        let controller = MarkdownWebController()
+        controller.readFile = { url, completion in
+            completion(try? String(contentsOf: url, encoding: .utf8))
+        }
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        let file2 = tmpDir.appendingPathComponent("two.md")
+        try "# One".write(to: file1, atomically: true, encoding: .utf8)
+        try "# Two".write(to: file2, atomically: true, encoding: .utf8)
+
+        var observed: [String] = []
+        controller.fileURLDidChange = { observed.append($0?.lastPathComponent ?? "nil") }
+
+        try controller.loadMarkdownFile(at: file1)
+        controller.handleOpenMarkdown("two.md")
+
+        XCTAssertEqual(observed, ["one.md", "two.md"],
+                       "Every change of rendered file must be reported to the host")
+    }
+
     // MARK: - Version display
 
     func testRenderedHTMLContainsVersion() {

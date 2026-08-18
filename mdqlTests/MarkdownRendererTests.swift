@@ -190,6 +190,29 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("href=\"https://a.com/?x=1&amp;y=2\""), "Link href must escape ampersand; got: \(html)")
     }
 
+    func testLinkDestinationCannotBreakOutOfTheHrefAttribute() {
+        // A link destination may legally contain a double quote. Written into
+        // href raw it closes the attribute, and the rest becomes a live event
+        // handler in a WebView that can open URLs and write to the file.
+        let html = MarkdownRenderer.renderBody(markdown: #"[x](a"onmouseover="alert(1))"#)
+        XCTAssertFalse(html.contains("onmouseover=\"alert"),
+                       "Link destination must not inject an attribute; got: \(html)")
+        XCTAssertTrue(html.contains("&quot;"),
+                      "Quote in destination must be escaped; got: \(html)")
+    }
+
+    func testImageSourceCannotBreakOutOfTheSrcAttribute() {
+        let html = MarkdownRenderer.renderBody(markdown: #"![x](a"onerror="alert(1))"#)
+        XCTAssertFalse(html.contains("onerror=\"alert"),
+                       "Image source must not inject an attribute; got: \(html)")
+    }
+
+    func testImageSourceEscapesAmpersand() {
+        let html = MarkdownRenderer.renderBody(markdown: "![x](https://a.com/i.png?w=1&h=2)")
+        XCTAssertTrue(html.contains("src=\"https://a.com/i.png?w=1&amp;h=2\""),
+                      "Image src must escape ampersand; got: \(html)")
+    }
+
     func testIssue11Repro() throws {
         let url = fixtureURL("code-with-html")
         let md = try String(contentsOf: url, encoding: .utf8)
@@ -222,11 +245,10 @@ final class MarkdownRendererTests: XCTestCase {
     }
 
     func testHeadingWithInlineCodeNoDoubleEscape() {
-        // Defensive guard on the two-pass escape order. If swift-markdown ever emits
-        // <code>...</code> inside <h1>, the code pass escapes first and the heading
-        // pass must not re-escape the &entities;. Current behavior (plainText) has no
-        // nested <code>, so this also asserts that invariant: any "&" in the output
-        // appears as "&amp;" — never "&amp;amp;" or "&amp;lt;".
+        // A heading's inline code is escaped once, by the formatter, as it
+        // descends into the heading's children. Regression guard against
+        // re-escaping that output: any "&" must appear as "&amp;", never as
+        // "&amp;amp;" or "&amp;lt;".
         let html = MarkdownRenderer.renderBody(markdown: "## Using `<div>`")
         XCTAssertTrue(html.contains("&lt;div&gt;"), "Angle brackets must be escaped once; got: \(html)")
         XCTAssertFalse(html.contains("&amp;lt;"), "Must not double-escape; got: \(html)")

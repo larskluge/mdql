@@ -11,7 +11,12 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
 
     let webView: WKWebView
     private var fileWatcher: FileWatcher?
-    private(set) var fileURL: URL?
+    private(set) var fileURL: URL? {
+        didSet {
+            guard fileURL != oldValue else { return }
+            fileURLDidChange(fileURL)
+        }
+    }
     private var fileHistory: [URL] = []
 
     /// Opens a URL externally (browser, Finder, etc.). Default is a no-op.
@@ -25,6 +30,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// Calls back with `true` on success, `false` on failure. The host app
     /// writes the file directly; the QuickLook extension goes through XPC.
     var toggleCheckbox: (Int, Bool, @escaping (Bool) -> Void) -> Void = { _, _, completion in completion(false) }
+
+    /// Called whenever the rendered file changes — initial load, following a
+    /// link to a sibling `.md`, or going back. Hosts use it to keep window
+    /// chrome in sync with what is actually on screen. Default is a no-op.
+    var fileURLDidChange: (URL?) -> Void = { _ in }
 
     /// When true, rendered HTML enables clickable checkboxes. Both hosts set
     /// this; it says nothing about which one is rendering.

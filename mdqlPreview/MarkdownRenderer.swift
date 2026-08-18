@@ -18,7 +18,7 @@ public struct MarkdownRenderer {
     public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
-        let html = postProcessCheckboxes(postProcessEscaping(HTMLFormatter.format(document)), interactive: interactive)
+        let html = postProcessCheckboxes(HTMLFormatter.format(escapingAttributeValues(document)), interactive: interactive)
         let frontMatterHTML = renderFrontMatter(frontMatter)
         return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton, interactive: interactive, appChrome: appChrome)
     }
@@ -27,14 +27,8 @@ public struct MarkdownRenderer {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         let frontMatterHTML = renderFrontMatter(frontMatter)
-        return frontMatterHTML + postProcessCheckboxes(postProcessEscaping(HTMLFormatter.format(document)), interactive: interactive)
+        return frontMatterHTML + postProcessCheckboxes(HTMLFormatter.format(escapingAttributeValues(document)), interactive: interactive)
     }
-
-    // MARK: - HTML Escaping
-    // swift-markdown's HTMLFormatter interpolates user content raw in several places
-    // (CodeBlock.code, InlineCode.code, Heading.plainText, Link.destination). We
-    // post-process its output to close those holes. See docs/superpowers/specs/
-    // 2026-04-17-html-escaping-fix-design.md.
 
     // MARK: - Interactive Checkboxes
     // When `interactive` is true, strip `disabled` from task-list
@@ -55,24 +49,54 @@ public struct MarkdownRenderer {
         }
     }
 
-    static func postProcessEscaping(_ html: String) -> String {
-        var out = html
-        out = replaceRegex(in: out, pattern: #"<code([^>]*)>([\s\S]*?)</code>"#) { groups in
-            "<code\(groups[1])>\(escapeCodeContent(groups[2]))</code>"
-        }
-        out = replaceRegex(in: out, pattern: #"<h([1-6])>([\s\S]*?)</h\1>"#) { groups in
-            "<h\(groups[1])>\(escapeCodeContent(groups[2]))</h\(groups[1])>"
-        }
-        out = replaceRegex(in: out, pattern: #"<a href="([^"]*)">"#) { groups in
-            "<a href=\"\(escapeAttribute(groups[1]))\">"
-        }
-        return out
+    // MARK: - HTML Escaping
+    // HTMLFormatter escapes text, code blocks and inline code itself. It still
+    // writes `Link.destination`, `Image.source` and `Image.title` raw into
+    // `href="…"` / `src="…"` / `title="…"`, so we escape those on the tree
+    // before it formats. See docs/specs/2026-04-17-html-escaping-fix-design.md.
+
+    /// Escapes the URLs and titles that `HTMLFormatter` drops straight into
+    /// attribute values, before it does so.
+    ///
+    /// Repairing the formatter's output with a regex cannot work here: once a
+    /// destination containing `"` has been written out, the quote has already
+    /// closed the attribute and whatever followed it is a sibling attribute
+    /// indistinguishable from a real one. `[](a"onmouseover="alert(1))` is
+    /// enough — and this preview runs JS with a bridge that opens URLs and
+    /// writes to the file on disk. Escaping on the tree removes the hole
+    /// instead of papering over it.
+    static func escapingAttributeValues(_ document: Document) -> Markup {
+        var escaper = AttributeValueEscaper()
+        return escaper.visit(document) ?? document
     }
 
-    private static func escapeCodeContent(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
-         .replacingOccurrences(of: "<", with: "&lt;")
-         .replacingOccurrences(of: ">", with: "&gt;")
+    private struct AttributeValueEscaper: MarkupRewriter {
+        typealias Result = Markup?
+
+        /// Raw inline HTML in a heading is shown, not run. `## Using <Component>`
+        /// means what it says; nobody titles a section with a live element. Turning
+        /// the node into text lets the formatter escape it exactly once. Inline HTML
+        /// elsewhere still renders — see AGENTS.md.
+        mutating func visitHeading(_ heading: Heading) -> Markup? {
+            let children = heading.children.map { child -> Markup in
+                guard let inlineHTML = child as? InlineHTML else { return child }
+                return Text(inlineHTML.rawHTML)
+            }
+            return defaultVisit(heading.withUncheckedChildren(children))
+        }
+
+        mutating func visitLink(_ link: Link) -> Markup? {
+            var link = link
+            link.destination = link.destination.map(MarkdownRenderer.escapeAttribute)
+            return defaultVisit(link)
+        }
+
+        mutating func visitImage(_ image: Image) -> Markup? {
+            var image = image
+            image.source = image.source.map(MarkdownRenderer.escapeAttribute)
+            image.title = image.title.map(MarkdownRenderer.escapeAttribute)
+            return defaultVisit(image)
+        }
     }
 
     private static func escapeAttribute(_ s: String) -> String {
