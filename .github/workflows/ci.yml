@@ -13,8 +13,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        run: xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS" | xcpretty || xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS"
+      # Before the build, for the reason the Makefile gives: this suite needs
+      # nothing installed and takes milliseconds, and a broken bump tool should not
+      # be discovered twenty minutes into an xcodebuild. It also carries
+      # test_the_repositorys_own_pbxproj_is_sound, the only check anywhere that a
+      # target-level MARKETING_VERSION has not been added to shadow the project-level
+      # one — a PR doing that leaves one target shipping a stale number with every
+      # build in this file still green.
+      - name: Test the version tooling
+        run: make version-test
 
+      # Nothing below is piped. Both steps used to read
+      # `xcodebuild … | xcpretty || xcodebuild …`, and neither half did what it looks
+      # like it does: a pipeline exits with its *last* command's status, xcpretty
+      # exits 0 on any log it can read, so the step was green whatever xcodebuild
+      # said — and the `||` fallback, which exists to rerun the command when xcpretty
+      # is missing, therefore never ran either. A prettier log is not worth a job
+      # that cannot fail; xcodebuild's own exit status is the step's now.
+      - name: Build
+        run: xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS"
+
+      # `make test`, not a second copy of the xcodebuild invocation. The copy that
+      # used to be here named `-scheme mdqlTests` — that is a *target*; the only
+      # scheme that runs the suite is `mdql`. Masked by the pipeline above, the error
+      # was invisible, so the 116 tests ran on no push and no pull request while every
+      # run reported success. A single entry point cannot drift from itself, and it is
+      # the one a developer runs locally. It repeats `version-test` in milliseconds,
+      # which is a cheaper duplicate than a second xcodebuild line free to disagree
+      # with the Makefile's.
       - name: Run tests
-        run: xcodebuild test -project mdql.xcodeproj -scheme mdqlTests -destination "platform=macOS" | xcpretty || xcodebuild test -project mdql.xcodeproj -scheme mdqlTests -destination "platform=macOS"
+        run: make test

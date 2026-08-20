@@ -5,3 +5,6 @@ build/
 default.profraw
 .claude/
 .superpowers/
+
+# `make version-test` writes one of these under scripts/ on every run.
+__pycache__/

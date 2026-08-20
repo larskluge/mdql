@@ -156,7 +156,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "cd \"$SOURCE_ROOT\"\nHASH=$(git rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nDIRTY=$(git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null || echo \"-dirty\")\necho \"${HASH}${DIRTY}\" > \"$DERIVED_FILE_DIR/version.txt\"\ncp \"$DERIVED_FILE_DIR/version.txt\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/version.txt\"\n";
+			shellScript = "cd \"$SOURCE_ROOT\"\nHASH=$(git rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nDIRTY=$(git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null || echo \"-dirty\")\necho \"${MARKETING_VERSION} (${HASH}${DIRTY})\" > \"$DERIVED_FILE_DIR/version.txt\"\ncp \"$DERIVED_FILE_DIR/version.txt\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/version.txt\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -690,6 +690,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 72;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -709,6 +710,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -750,6 +752,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 72;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -763,6 +766,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
