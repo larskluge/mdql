@@ -1,5 +1,6 @@
 import XCTest
 import Markdown
+import WebKit
 
 /// The tags GFM's tagfilter escapes, plus `noscript` and `template`: each makes
 /// the browser read what follows as raw text or inert content, up to its end
@@ -220,17 +221,78 @@ final class MarkdownRendererTests: XCTestCase {
                        "Only the runtime and init script tags may close")
     }
 
-    func testMermaidFixtureRenders() {
+    func testMermaidFixtureRenders() throws {
         let url = fixtureURL("mermaid")
-        let md = try? String(contentsOf: url, encoding: .utf8)
-        XCTAssertNotNil(md, "Fixture mermaid.md should load")
-        guard let md = md else { return }
-        let html = MarkdownRenderer.render(markdown: md)
+        let html = try MarkdownRenderer.render(fileAt: url)
         XCTAssertEqual(html.components(separatedBy: "<script id=\"mdql-mermaid\">").count - 1, 1,
                        "The runtime must be embedded exactly once")
         XCTAssertTrue(html.contains("language-mermaid"))
         XCTAssertTrue(html.contains("language-swift"),
                       "Non-mermaid code blocks in the fixture must be untouched")
+
+        let md = try String(contentsOf: url, encoding: .utf8)
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertFalse(body.contains("<script"),
+                       "renderBody must never emit script tags")
+    }
+
+    func testMermaidThemeListenerIsRegistered() {
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertTrue(html.contains("__mdqlMermaidThemeListener"),
+                      "Theme change listener must be registered")
+        XCTAssertTrue(html.contains("prefers-color-scheme: dark"),
+                      "Listener must track prefers-color-scheme")
+    }
+
+    func testMermaidDiagramRendersAsSVGInWebView() {
+        let md = """
+        ```mermaid
+        flowchart LR
+            A --> B
+        ```
+        """
+        let html = MarkdownRenderer.render(markdown: md)
+        let expectation = expectation(description: "Mermaid renders as SVG in DOM")
+
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        class NavDelegate: NSObject, WKNavigationDelegate {
+            let exp: XCTestExpectation
+            init(exp: XCTestExpectation) { self.exp = exp }
+            func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+                // Poll briefly for the async mermaid.render promise to resolve
+                func checkDOM(retries: Int) {
+                    webView.evaluateJavaScript("({ svgCount: document.querySelectorAll('.markdown-body .mdql-mermaid svg').length, hasObjectString: document.querySelector('.markdown-body').innerHTML.includes('[object Object]') })") { result, _ in
+                        guard let dict = result as? [String: Any],
+                              let svgCount = dict["svgCount"] as? Int,
+                              let hasObjectString = dict["hasObjectString"] as? Bool else {
+                            if retries > 0 {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { checkDOM(retries: retries - 1) }
+                            } else {
+                                XCTFail("Failed to query DOM from WKWebView")
+                                self.exp.fulfill()
+                            }
+                            return
+                        }
+                        if svgCount >= 1 {
+                            XCTAssertFalse(hasObjectString, "Mermaid diagram must not render as [object Object]")
+                            self.exp.fulfill()
+                        } else if retries > 0 {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { checkDOM(retries: retries - 1) }
+                        } else {
+                            XCTFail("Mermaid did not render SVG within timeout")
+                            self.exp.fulfill()
+                        }
+                    }
+                }
+                checkDOM(retries: 20)
+            }
+        }
+
+        let navDelegate = NavDelegate(exp: expectation)
+        webView.navigationDelegate = navDelegate
+        webView.loadHTMLString(html, baseURL: nil)
+
+        wait(for: [expectation], timeout: 5)
     }
 
     // MARK: - HTML Escaping (Issue #11)

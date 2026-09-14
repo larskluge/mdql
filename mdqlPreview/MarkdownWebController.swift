@@ -174,6 +174,9 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// only navigations `decidePolicyFor` allows.
     private var pageLoadsPending = 0
 
+    /// Tracks whether the current document HTML loaded the Mermaid runtime.
+    private(set) var hasLoadedMermaid: Bool = false
+
     override init() {
         let config = WKWebViewConfiguration()
         self.webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
@@ -332,6 +335,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         let html = MarkdownRenderer.render(markdown: text.string, title: title, showBackButton: !fileHistory.isEmpty,
                                            interactive: interactive, checkboxesClickable: text.encoding == .utf8,
                                            appChrome: appChrome, topInset: topInset)
+        hasLoadedMermaid = html.contains("id=\"mdql-mermaid\"")
         let navigation = loadPage(html)
         if let navigation, let anchor {
             pendingAnchor = (navigation, anchor)
@@ -371,6 +375,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             case .success(let text):
                 self.showEncoding(text.encoding)
                 let bodyHTML = MarkdownRenderer.renderBody(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
+                let needsMermaid = bodyHTML.contains("language-mermaid")
+                if needsMermaid && !self.hasLoadedMermaid {
+                    self.showMarkdown(text, url: url)
+                    return
+                }
                 let base64 = Data(bodyHTML.utf8).base64EncodedString()
                 self.renderCount += 1
                 self.webView.evaluateJavaScript(

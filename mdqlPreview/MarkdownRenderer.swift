@@ -371,26 +371,60 @@ public struct MarkdownRenderer {
                     window.__mdqlMermaidReady = true;
                 }
                 var seq = 0;
+                function renderDiagram(target, sourceText) {
+                    mermaid.render('mdql-mermaid-svg-' + (seq++), sourceText).then(function(result) {
+                        var div = document.createElement('div');
+                        div.className = 'mdql-mermaid';
+                        div.setAttribute('data-mdql-source', sourceText);
+                        div.innerHTML = typeof result === 'string' ? result : (result && result.svg || '');
+                        if (result && typeof result.bindFunctions === 'function') {
+                            result.bindFunctions(div);
+                        }
+                        target.replaceWith(div);
+                    }).catch(function(err) {
+                        target.classList.add('mdql-mermaid-error');
+                        var note = document.createElement('div');
+                        note.className = 'mdql-mermaid-error-msg';
+                        note.textContent = 'Diagram error: ' + (err && err.message || err);
+                        target.after(note);
+                    });
+                }
                 blocks.forEach(function(code) {
                     var pre = code.parentElement;
                     if (pre.getAttribute('data-mdql-mermaid')) return;
                     pre.setAttribute('data-mdql-mermaid', '1');
                     // textContent is entity-decoded by the browser, so mermaid
                     // gets the raw fence source.
-                    mermaid.render('mdql-mermaid-svg-' + (seq++), code.textContent).then(function(svg) {
-                        var div = document.createElement('div');
-                        div.className = 'mdql-mermaid';
-                        div.innerHTML = svg;
-                        pre.replaceWith(div);
-                    }).catch(function(err) {
-                        pre.classList.add('mdql-mermaid-error');
-                        var note = document.createElement('div');
-                        note.className = 'mdql-mermaid-error-msg';
-                        note.textContent = 'Diagram error: ' + (err && err.message || err);
-                        pre.after(note);
-                    });
+                    renderDiagram(pre, code.textContent);
                 });
             };
+
+            if (!window.__mdqlMermaidThemeListener && window.matchMedia) {
+                window.__mdqlMermaidThemeListener = true;
+                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+                    if (typeof mermaid === 'undefined') return;
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        securityLevel: 'strict',
+                        suppressErrorRendering: true,
+                        theme: e.matches ? 'dark' : 'default'
+                    });
+                    document.querySelectorAll('.markdown-body .mdql-mermaid[data-mdql-source]').forEach(function(div) {
+                        var sourceText = div.getAttribute('data-mdql-source');
+                        if (!sourceText) return;
+                        mermaid.render('mdql-mermaid-svg-' + (seq++), sourceText).then(function(result) {
+                            var newDiv = document.createElement('div');
+                            newDiv.className = 'mdql-mermaid';
+                            newDiv.setAttribute('data-mdql-source', sourceText);
+                            newDiv.innerHTML = typeof result === 'string' ? result : (result && result.svg || '');
+                            if (result && typeof result.bindFunctions === 'function') {
+                                result.bindFunctions(newDiv);
+                            }
+                            div.replaceWith(newDiv);
+                        }).catch(function() {});
+                    });
+                });
+            }
             window.__mdqlRenderDiagrams();
 
             function svg(shapes) {
@@ -628,8 +662,9 @@ public struct MarkdownRenderer {
             return nil
         }
         return js
-            .replacingOccurrences(of: "</script", with: "<\\/script")
+            .replacingOccurrences(of: "</script", with: "<\\/script", options: .caseInsensitive)
             .replacingOccurrences(of: "<!--", with: "<\\!--")
+            .replacingOccurrences(of: "<![CDATA[", with: "<\\![CDATA[")
     }()
 
     /// The Mermaid runtime is embedded only when the body has a mermaid fence —

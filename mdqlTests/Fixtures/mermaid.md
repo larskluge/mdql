@@ -23,11 +23,11 @@ sequenceDiagram
     QL-->>U: rendered HTML
 ```
 
-## Invalid diagram (renders as code + error note)
+## Simple flowchart
 
 ```mermaid
 flowchart LR
-    A --> --> B
+    A --> B
 ```
 
 ## Normal code block stays a code block
