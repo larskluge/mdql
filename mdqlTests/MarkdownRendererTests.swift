@@ -161,6 +161,78 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("<pre><code class=\"language-swift\">"), "Should contain code block with language class")
     }
 
+    // MARK: - Mermaid diagrams
+
+    func testMermaidFencePassesThroughAsCodeBlock() {
+        // The renderer does not transform mermaid fences — the in-page
+        // __mdqlRenderDiagrams hook scans for this exact markup.
+        let md = """
+        ```mermaid
+        flowchart LR
+            A --> B
+        ```
+        """
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(body.contains("<pre><code class=\"language-mermaid\">"),
+                      "Mermaid fence must pass through as a language-mermaid code block")
+    }
+
+    func testMermaidRuntimeIncludedOnlyWhenFencePresent() {
+        let withFence = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertTrue(withFence.contains("<script id=\"mdql-mermaid\">"),
+                      "A mermaid fence must pull in the vendored runtime")
+
+        let withoutFence = MarkdownRenderer.render(markdown: "```swift\nlet x = 42\n```")
+        XCTAssertFalse(withoutFence.contains("<script id=\"mdql-mermaid\">"),
+                       "Diagram-free documents must not embed the runtime")
+    }
+
+    func testMermaidHookAlwaysPresent() {
+        // The hook must exist even without diagrams — the live-update swap in
+        // MarkdownWebController.reloadContent() invokes it unconditionally.
+        let html = MarkdownRenderer.render(markdown: "# No diagrams")
+        XCTAssertTrue(html.contains("__mdqlRenderDiagrams"),
+                      "The render hook must always be defined")
+    }
+
+    func testRenderBodyHasNoScriptTags() {
+        // renderBody is an innerHTML payload; the runtime only ever lives in
+        // the enclosing document produced by render().
+        let body = MarkdownRenderer.renderBody(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertFalse(body.contains("<script"),
+                       "renderBody must never emit script tags")
+    }
+
+    func testInlinedRuntimeCannotBreakOutOfScriptTag() {
+        // Two sequences inside JS can corrupt an inline <script> block:
+        // `</script` closes the tag early, and `<!--` flips the HTML parser
+        // into script-data-escaped state. The loader escapes both (`<\/script`
+        // and `<\!--` are the identical string values inside JS literals).
+        // This build's runtime contains the latter; the escaping must hold
+        // for both. With the runtime + the init script, exactly two real
+        // `</script` closers may exist in the document.
+        let md = "```mermaid\nflowchart LR\n    A --> B\n```"
+        let html = MarkdownRenderer.render(markdown: md)
+        let escaped = MarkdownRenderer.mermaidScriptTag(for: "<pre><code class=\"language-mermaid\"></code></pre>", nonce: "n")
+        XCTAssertTrue(escaped.contains("<\\!--") || escaped.contains("<\\/script"),
+                      "The runtime's HTML-parser hazards must be escaped")
+        XCTAssertEqual(html.components(separatedBy: "</script").count - 1, 2,
+                       "Only the runtime and init script tags may close")
+    }
+
+    func testMermaidFixtureRenders() {
+        let url = fixtureURL("mermaid")
+        let md = try? String(contentsOf: url, encoding: .utf8)
+        XCTAssertNotNil(md, "Fixture mermaid.md should load")
+        guard let md = md else { return }
+        let html = MarkdownRenderer.render(markdown: md)
+        XCTAssertEqual(html.components(separatedBy: "<script id=\"mdql-mermaid\">").count - 1, 1,
+                       "The runtime must be embedded exactly once")
+        XCTAssertTrue(html.contains("language-mermaid"))
+        XCTAssertTrue(html.contains("language-swift"),
+                      "Non-mermaid code blocks in the fixture must be untouched")
+    }
+
     // MARK: - HTML Escaping (Issue #11)
 
     func testCodeBlockEscapesAngleBrackets() {

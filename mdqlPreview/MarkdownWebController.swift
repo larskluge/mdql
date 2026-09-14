@@ -374,7 +374,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
                 let base64 = Data(bodyHTML.utf8).base64EncodedString()
                 self.renderCount += 1
                 self.webView.evaluateJavaScript(
-                    "document.querySelector('.markdown-body').innerHTML = new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0)))"
+                    "document.querySelector('.markdown-body').innerHTML = new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0))); window.__mdqlRenderDiagrams && window.__mdqlRenderDiagrams();"
                 ) { _, error in
                     if let error {
                         Self.log.error("A live update of \(url.lastPathComponent, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
