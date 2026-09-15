@@ -236,6 +236,17 @@ final class MarkdownRendererTests: XCTestCase {
                        "renderBody must never emit script tags")
     }
 
+    func testMermaidClassMentionIsNotAFence() {
+        // Inline code, prose, and URLs can contain the class name; only the
+        // formatter's fence tag should pull in the runtime.
+        let md = "See `language-mermaid`, language-mermaid, and <https://x.test/language-mermaid>."
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(body.contains("language-mermaid"))
+        XCTAssertFalse(MarkdownRenderer.containsMermaidFence(body))
+        XCTAssertFalse(MarkdownRenderer.render(markdown: md).contains("<script id=\"mdql-mermaid\">"),
+                       "A mention of the class name must not embed the runtime")
+    }
+
     func testMermaidThemeListenerIsRegistered() {
         let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
         XCTAssertTrue(html.contains("__mdqlMermaidThemeListener"),
@@ -293,6 +304,35 @@ final class MarkdownRendererTests: XCTestCase {
         webView.loadHTMLString(html, baseURL: nil)
 
         wait(for: [expectation], timeout: 5)
+    }
+
+    func testMermaidDiagramReRendersOnThemeChange() {
+        // The theme listener runs outside __mdqlRenderDiagrams; a scoping
+        // slip there throws before mermaid.render and leaves stale colors.
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        webView.appearance = NSAppearance(named: .aqua)
+        let loaded = expectation(description: "Page loaded")
+        let delegate = LoadDelegate { loaded.fulfill() }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(html, baseURL: nil)
+        wait(for: [loaded], timeout: 5)
+
+        let svgID = "(document.querySelector('.markdown-body .mdql-mermaid svg') || {}).id || ''"
+        var firstID = ""
+        pollJS(webView, svgID, "Initial SVG") { firstID = $0 as? String ?? ""; return !firstID.isEmpty }
+
+        webView.appearance = NSAppearance(named: .darkAqua)
+        pollJS(webView, "[\(svgID), window.matchMedia('(prefers-color-scheme: dark)').matches]", "Re-rendered SVG") { result in
+            guard let pair = result as? [Any], let id = pair.first as? String else { return false }
+            return pair.last as? Bool == true && !id.isEmpty && id != firstID
+        }
+    }
+
+    private final class LoadDelegate: NSObject, WKNavigationDelegate {
+        let onFinish: () -> Void
+        init(_ onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { onFinish() }
     }
 
     // MARK: - HTML Escaping (Issue #11)
@@ -763,5 +803,20 @@ final class MarkdownRendererTests: XCTestCase {
         let url = fixtureURL("special-chars")
         let html = try MarkdownRenderer.render(fileAt: url)
         XCTAssertTrue(html.contains("<title>special-chars</title>"), "Title should handle hyphens")
+    }
+}
+
+extension XCTestCase {
+    /// Evaluates `script` every 50ms until `done` accepts the result or 5s pass.
+    func pollJS(_ webView: WKWebView, _ script: String, _ label: String, done: @escaping (Any?) -> Bool) {
+        let exp = expectation(description: label)
+        func attempt(_ retries: Int) {
+            webView.evaluateJavaScript(script) { result, _ in
+                if done(result) { exp.fulfill() }
+                else if retries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { attempt(retries - 1) } }
+            }
+        }
+        attempt(100)
+        wait(for: [exp], timeout: 6)
     }
 }

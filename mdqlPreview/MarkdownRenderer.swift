@@ -356,72 +356,123 @@ public struct MarkdownRenderer {
 
             // Mermaid diagrams: the runtime is only embedded when the document
             // has a ```mermaid fence (see mermaidScriptTag(for:nonce:)). The hook is
-            // also re-invoked after live-update innerHTML swaps — rendered
-            // blocks are marked with data-mdql-mermaid, so it is idempotent.
-            window.__mdqlRenderDiagrams = function() {
+            // also re-invoked after live-update swaps (__mdqlSwapBody) —
+            // rendered blocks are marked with data-mdql-mermaid, so it is
+            // idempotent. seq lives at this scope so the initial render,
+            // live-update re-renders, and theme re-renders never reuse an SVG id.
+            var seq = 0;
+            // mermaidTheme is the theme mermaid is initialized with; themeGen
+            // bumps on every change so a render queued before the change can
+            // tell its SVG may be stale.
+            var mermaidTheme = null;
+            var themeGen = 0;
+            function initMermaid(dark) {
+                var theme = dark ? 'dark' : 'default';
+                if (theme === mermaidTheme) return;
+                mermaidTheme = theme;
+                themeGen++;
+                mermaid.initialize({
+                    startOnLoad: false,
+                    securityLevel: 'strict',
+                    suppressErrorRendering: true,
+                    theme: theme
+                });
+            }
+            // Brings mermaid in line with the page's current color scheme. The
+            // media query can flip before its change event fires, so swaps
+            // check it directly rather than waiting on the listener.
+            function syncMermaidTheme() {
+                initMermaid(window.matchMedia('(prefers-color-scheme: dark)').matches);
+            }
+            // Renders sourceText and swaps the result in for target (the raw
+            // <pre> on first render, the previous wrapper on theme change).
+            // The source and theme ride along on the wrapper so it can be
+            // re-rendered, and so a live-update swap only reuses wrappers
+            // drawn in the current theme. mermaid queues renders, so one
+            // requested before a theme change may run after it: re-render
+            // when the theme moved while this one was in flight.
+            function renderMermaid(target, sourceText) {
+                var gen = themeGen;
+                var theme = mermaidTheme;
+                return mermaid.render('mdql-mermaid-svg-' + (seq++), sourceText).then(function(result) {
+                    var div = document.createElement('div');
+                    div.className = 'mdql-mermaid';
+                    div.setAttribute('data-mdql-source', sourceText);
+                    div.setAttribute('data-mdql-theme', theme);
+                    div.innerHTML = typeof result === 'string' ? result : (result && result.svg || '');
+                    if (result && typeof result.bindFunctions === 'function') {
+                        result.bindFunctions(div);
+                    }
+                    target.replaceWith(div);
+                    if (gen !== themeGen && div.isConnected) {
+                        renderMermaid(div, sourceText).catch(function() {});
+                    }
+                });
+            }
+
+            // cache (optional) maps fence source to a queue of rendered
+            // wrappers from before a live-update swap; a fence whose source
+            // is unchanged takes its old wrapper back instead of re-rendering.
+            // Moving the node keeps its SVG ids and bindFunctions listeners.
+            window.__mdqlRenderDiagrams = function(cache) {
                 var blocks = document.querySelectorAll('.markdown-body pre code.language-mermaid');
                 if (!blocks.length || typeof mermaid === 'undefined') return;
-                if (!window.__mdqlMermaidReady) {
-                    mermaid.initialize({
-                        startOnLoad: false,
-                        securityLevel: 'strict',
-                        suppressErrorRendering: true,
-                        theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default'
-                    });
-                    window.__mdqlMermaidReady = true;
-                }
-                var seq = 0;
-                function renderDiagram(target, sourceText) {
-                    mermaid.render('mdql-mermaid-svg-' + (seq++), sourceText).then(function(result) {
-                        var div = document.createElement('div');
-                        div.className = 'mdql-mermaid';
-                        div.setAttribute('data-mdql-source', sourceText);
-                        div.innerHTML = typeof result === 'string' ? result : (result && result.svg || '');
-                        if (result && typeof result.bindFunctions === 'function') {
-                            result.bindFunctions(div);
-                        }
-                        target.replaceWith(div);
-                    }).catch(function(err) {
-                        target.classList.add('mdql-mermaid-error');
-                        var note = document.createElement('div');
-                        note.className = 'mdql-mermaid-error-msg';
-                        note.textContent = 'Diagram error: ' + (err && err.message || err);
-                        target.after(note);
-                    });
-                }
+                syncMermaidTheme();
                 blocks.forEach(function(code) {
                     var pre = code.parentElement;
                     if (pre.getAttribute('data-mdql-mermaid')) return;
-                    pre.setAttribute('data-mdql-mermaid', '1');
                     // textContent is entity-decoded by the browser, so mermaid
                     // gets the raw fence source.
-                    renderDiagram(pre, code.textContent);
+                    var sourceText = code.textContent;
+                    var reusable = cache && cache.get(sourceText);
+                    if (reusable && reusable.length) {
+                        pre.replaceWith(reusable.shift());
+                        return;
+                    }
+                    pre.setAttribute('data-mdql-mermaid', '1');
+                    renderMermaid(pre, sourceText).catch(function(err) {
+                        pre.classList.add('mdql-mermaid-error');
+                        var note = document.createElement('div');
+                        note.className = 'mdql-mermaid-error-msg';
+                        note.textContent = 'Diagram error: ' + (err && err.message || err);
+                        pre.after(note);
+                    });
                 });
+            };
+
+            // Live-update swap. Harvesting the rendered wrappers, replacing the
+            // body, and putting unchanged diagrams back all happen in this one
+            // task, so no frame shows raw fence source in between. Wrappers
+            // left in the cache are dropped; error blocks are never harvested,
+            // so a fixed fence re-renders.
+            window.__mdqlSwapBody = function(html) {
+                var article = document.querySelector('.markdown-body');
+                if (!article) return;
+                var cache = new Map();
+                if (typeof mermaid !== 'undefined') {
+                    syncMermaidTheme();
+                    article.querySelectorAll('.mdql-mermaid[data-mdql-source]').forEach(function(div) {
+                        if (div.getAttribute('data-mdql-theme') !== mermaidTheme) return;
+                        var sourceText = div.getAttribute('data-mdql-source');
+                        if (!cache.has(sourceText)) cache.set(sourceText, []);
+                        cache.get(sourceText).push(div);
+                    });
+                }
+                article.innerHTML = html;
+                window.__mdqlRenderDiagrams(cache);
             };
 
             if (!window.__mdqlMermaidThemeListener && window.matchMedia) {
                 window.__mdqlMermaidThemeListener = true;
                 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
                     if (typeof mermaid === 'undefined') return;
-                    mermaid.initialize({
-                        startOnLoad: false,
-                        securityLevel: 'strict',
-                        suppressErrorRendering: true,
-                        theme: e.matches ? 'dark' : 'default'
-                    });
+                    initMermaid(e.matches);
+                    // A swap may already have synced the theme and rendered
+                    // some wrappers in it; only the stale ones need redrawing.
                     document.querySelectorAll('.markdown-body .mdql-mermaid[data-mdql-source]').forEach(function(div) {
                         var sourceText = div.getAttribute('data-mdql-source');
-                        if (!sourceText) return;
-                        mermaid.render('mdql-mermaid-svg-' + (seq++), sourceText).then(function(result) {
-                            var newDiv = document.createElement('div');
-                            newDiv.className = 'mdql-mermaid';
-                            newDiv.setAttribute('data-mdql-source', sourceText);
-                            newDiv.innerHTML = typeof result === 'string' ? result : (result && result.svg || '');
-                            if (result && typeof result.bindFunctions === 'function') {
-                                result.bindFunctions(newDiv);
-                            }
-                            div.replaceWith(newDiv);
-                        }).catch(function() {});
+                        if (!sourceText || div.getAttribute('data-mdql-theme') === mermaidTheme) return;
+                        renderMermaid(div, sourceText).catch(function() {});
                     });
                 });
             }
@@ -667,11 +718,19 @@ public struct MarkdownRenderer {
             .replacingOccurrences(of: "<![CDATA[", with: "<\\![CDATA[")
     }()
 
+    /// True when `html` holds a rendered ```mermaid fence. Matches the exact
+    /// opening tag HTMLFormatter emits rather than the bare class name: text
+    /// content is escaped, so prose, inline code, or URLs that merely mention
+    /// `language-mermaid` never produce the literal tag.
+    internal static func containsMermaidFence(_ html: String) -> Bool {
+        html.contains("<code class=\"language-mermaid\">")
+    }
+
     /// The Mermaid runtime is embedded only when the body has a mermaid fence —
     /// diagram-free files must render exactly the HTML they always did. The
     /// in-page `__mdqlRenderDiagrams` hook does the actual rendering.
     internal static func mermaidScriptTag(for body: String, nonce: String) -> String {
-        guard body.contains("language-mermaid"), let js = mermaidRuntime else { return "" }
+        guard containsMermaidFence(body), let js = mermaidRuntime else { return "" }
         return "\n<script id=\"mdql-mermaid\" nonce=\"\(nonce)\">\n\(js)\n</script>\n"
     }
 

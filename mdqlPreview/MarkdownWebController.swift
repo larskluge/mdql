@@ -174,7 +174,9 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// only navigations `decidePolicyFor` allows.
     private var pageLoadsPending = 0
 
-    /// Tracks whether the current document HTML loaded the Mermaid runtime.
+    /// Whether the current document HTML embedded the Mermaid runtime. The
+    /// runtime is inlined iff the body has a fence, so this mirrors
+    /// `MarkdownRenderer.mermaidScriptTag(for:nonce:)`.
     private(set) var hasLoadedMermaid: Bool = false
 
     override init() {
@@ -335,7 +337,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         let html = MarkdownRenderer.render(markdown: text.string, title: title, showBackButton: !fileHistory.isEmpty,
                                            interactive: interactive, checkboxesClickable: text.encoding == .utf8,
                                            appChrome: appChrome, topInset: topInset)
-        hasLoadedMermaid = html.contains("id=\"mdql-mermaid\"")
+        hasLoadedMermaid = MarkdownRenderer.containsMermaidFence(html)
         let navigation = loadPage(html)
         if let navigation, let anchor {
             pendingAnchor = (navigation, anchor)
@@ -367,7 +369,8 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         watcher.start()
     }
 
-    private func reloadContent() {
+    /// Re-renders the watched file after a change on disk. Exposed for testing.
+    func reloadContent() {
         guard let url = fileURL else { return }
         readFile(url) { [weak self] result in
             guard let self, self.fileURL == url else { return }
@@ -375,15 +378,20 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             case .success(let text):
                 self.showEncoding(text.encoding)
                 let bodyHTML = MarkdownRenderer.renderBody(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
-                let needsMermaid = bodyHTML.contains("language-mermaid")
+                let needsMermaid = MarkdownRenderer.containsMermaidFence(bodyHTML)
                 if needsMermaid && !self.hasLoadedMermaid {
                     self.showMarkdown(text, url: url)
                     return
                 }
                 let base64 = Data(bodyHTML.utf8).base64EncodedString()
                 self.renderCount += 1
+                // __mdqlSwapBody (see MarkdownRenderer) swaps the body and puts
+                // unchanged diagrams back without re-rendering them. A change can
+                // land after the article is parsed but before the init script
+                // defines the hook (e.g. while mermaid is still parsing); a plain
+                // swap then lets the init script render the new body.
                 self.webView.evaluateJavaScript(
-                    "document.querySelector('.markdown-body').innerHTML = new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0))); window.__mdqlRenderDiagrams && window.__mdqlRenderDiagrams();"
+                    "(function(h) { if (window.__mdqlSwapBody) { window.__mdqlSwapBody(h); return; } var a = document.querySelector('.markdown-body'); if (a) a.innerHTML = h; })(new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0))));"
                 ) { _, error in
                     if let error {
                         Self.log.error("A live update of \(url.lastPathComponent, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
