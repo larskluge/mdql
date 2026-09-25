@@ -45,17 +45,29 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// own, so it stays false there.
     var appChrome: Bool = false
 
+    private var isTornDown = false
+
     override init() {
         let config = WKWebViewConfiguration()
         self.webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
         super.init()
-        config.userContentController.add(self, name: "mdql")
+        config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "mdql")
         webView.navigationDelegate = self
     }
 
-    deinit {
+    /// Stops file watching, halts web view loading, and releases the script message handler.
+    func teardown() {
+        guard !isTornDown else { return }
+        isTornDown = true
         fileWatcher?.stop()
+        fileWatcher = nil
+        webView.stopLoading()
+        webView.navigationDelegate = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "mdql")
+    }
+
+    deinit {
+        teardown()
     }
 
     // MARK: - Public API
@@ -65,6 +77,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// `openMarkdown` go through the injected `readFile` closure.
     @discardableResult
     func loadMarkdownFile(at url: URL) throws -> Bool {
+        if isTornDown {
+            isTornDown = false
+            webView.navigationDelegate = self
+            webView.configuration.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "mdql")
+        }
         let markdown = try String(contentsOf: url, encoding: .utf8)
         let title = url.deletingPathExtension().lastPathComponent
         let html = MarkdownRenderer.render(markdown: markdown, title: title, interactive: interactive, appChrome: appChrome)
@@ -123,6 +140,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 
     private func showMarkdown(_ markdown: String, url: URL) {
+        if isTornDown {
+            isTornDown = false
+            webView.navigationDelegate = self
+            webView.configuration.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "mdql")
+        }
         fileWatcher?.stop()
         fileURL = url
         let title = url.deletingPathExtension().lastPathComponent
@@ -194,3 +216,19 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         decisionHandler(.allow)
     }
 }
+
+/// Trampoline that forwards `WKScriptMessageHandler` calls without retaining the delegate,
+/// breaking the circular retain cycle between `WKUserContentController` and `MarkdownWebController`.
+private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var delegate: WKScriptMessageHandler?
+
+    init(delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+        super.init()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+

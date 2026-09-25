@@ -4,12 +4,16 @@ import WebKit
 /// Hosts the markdown viewer window. Owns a `MarkdownWebController` and
 /// wires its file-read and url-open closures to direct (unsandboxed) calls —
 /// no XPC needed.
-final class DocumentWindowController: NSWindowController {
+final class DocumentWindowController: NSWindowController, NSWindowDelegate {
 
     private static let frameAutosaveName = "MarkdownDocumentWindow"
     private static let zedBundleIdentifier = "dev.zed.Zed"
 
-    private let controller = MarkdownWebController()
+    let controller = MarkdownWebController()
+
+    deinit {
+        controller.teardown()
+    }
 
     convenience init() {
         let initialFrame = NSRect(origin: .zero, size: Self.defaultContentSize())
@@ -28,6 +32,7 @@ final class DocumentWindowController: NSWindowController {
         }
         window.setFrameAutosaveName(Self.frameAutosaveName)
         self.init(window: window)
+        window.delegate = self
 
         controller.webView.autoresizingMask = [.width, .height]
         window.contentView = controller.webView
@@ -136,6 +141,10 @@ final class DocumentWindowController: NSWindowController {
             configuration: configuration,
             completionHandler: nil
         )
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        controller.teardown()
     }
 }
 

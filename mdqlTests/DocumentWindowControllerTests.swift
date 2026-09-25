@@ -58,4 +58,18 @@ final class DocumentWindowControllerTests: XCTestCase {
         XCTAssertEqual(controller.window?.representedURL?.resolvingSymlinksInPath(),
                        second.resolvingSymlinksInPath())
     }
+
+    func testDocumentWindowControllerDeallocatesCleanly() {
+        weak var weakWindowController: DocumentWindowController?
+        weak var weakWebController: MarkdownWebController?
+        autoreleasepool {
+            let controller = DocumentWindowController()
+            weakWindowController = controller
+            weakWebController = controller.controller
+            XCTAssertNotNil(weakWindowController)
+            XCTAssertNotNil(weakWebController)
+        }
+        XCTAssertNil(weakWindowController, "DocumentWindowController should deallocate")
+        XCTAssertNil(weakWebController, "MarkdownWebController should deallocate when DocumentWindowController deallocates")
+    }
 }

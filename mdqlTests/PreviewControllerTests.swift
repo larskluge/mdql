@@ -278,4 +278,49 @@ final class PreviewControllerTests: XCTestCase {
         // In test bundle, version.txt may not exist — should fall back to "dev"
         XCTAssertFalse(version.isEmpty, "Version should never be empty")
     }
+
+    // MARK: - Lifecycle and deallocation
+
+    func testMarkdownWebControllerDeallocatesWithoutRetainCycle() {
+        weak var weakController: MarkdownWebController?
+        autoreleasepool {
+            let controller = MarkdownWebController()
+            weakController = controller
+            XCTAssertNotNil(weakController)
+        }
+        XCTAssertNil(weakController, "MarkdownWebController should deallocate without being retained by WKUserContentController")
+    }
+
+    func testPreviewControllerDeallocatesCleanly() {
+        weak var weakPreviewController: PreviewController?
+        weak var weakWebController: MarkdownWebController?
+        autoreleasepool {
+            let preview = PreviewController()
+            _ = preview.view
+            preview.viewDidDisappear()
+            weakPreviewController = preview
+            weakWebController = preview.controller
+            XCTAssertNotNil(weakPreviewController)
+            XCTAssertNotNil(weakWebController)
+        }
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertNil(weakPreviewController, "PreviewController should deallocate")
+        XCTAssertNil(weakWebController, "MarkdownWebController should deallocate")
+    }
+
+    func testTeardownClearsNavigationDelegateAndAllowsReArm() throws {
+        let controller = MarkdownWebController()
+        XCTAssertNotNil(controller.webView.navigationDelegate)
+        controller.teardown()
+        XCTAssertNil(controller.webView.navigationDelegate)
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let file = tmpDir.appendingPathComponent("test.md")
+        try "# Test".write(to: file, atomically: true, encoding: .utf8)
+
+        try controller.loadMarkdownFile(at: file)
+        XCTAssertNotNil(controller.webView.navigationDelegate)
+    }
 }
