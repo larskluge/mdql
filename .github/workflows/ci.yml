@@ -5,10 +5,28 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # By hand, on any branch: how a runner change is tried before it lands.
+  workflow_dispatch:
 
 jobs:
   build-and-test:
-    runs-on: macos-latest
+    # The on-demand Tart runner on the maintainer's Mac (larskluge/tart-ci), except
+    # for a pull request from another repository, which goes to GitHub's hosted
+    # runner so a fork's PR gets CI without borrowing the Mac. The test is the one
+    # tart-ci-demand applies: head repo == this repo. A null head repo (a deleted
+    # fork) therefore goes hosted too, rather than asking for a runner that would
+    # refuse it and leave the job queued.
+    #
+    # Coverage, not a guard. A fork's PR runs the fork's copy of this file and can
+    # ask for `tart`; the runner is minted on the repo, and GitHub may hand it that
+    # job when a legitimate one is queued beside it. The boundary is the fork-PR
+    # approval click (policy: all_external_contributors). Before approving a fork's
+    # run, read any change under .github/workflows/ that asks for `tart`.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","macOS","arm64","tart"]') || fromJSON('["macos-latest"]') }}
+    # A ceiling, not an estimate: hosted runs took 1-2.5 minutes (2026), and the
+    # Tart VM starts cold (no DerivedData, swift-markdown fetched afresh). Well under
+    # the runner's 90-minute MAX_JOB_SECONDS.
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4

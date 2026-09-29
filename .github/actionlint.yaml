@@ -1,0 +1,4 @@
+# The custom label the on-demand Tart runner registers (larskluge/tart-ci).
+self-hosted-runner:
+  labels:
+    - tart
