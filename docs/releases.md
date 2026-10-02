@@ -246,19 +246,22 @@ the target that installs, and it deliberately keeps its own path.
 
 ### What it needs, once
 
-A **Developer ID Application** certificate for team `GUGQ9MB76A`. Xcode →
-Settings → Accounts → the `GUGQ9MB76A` team → Manage Certificates → + →
-*Developer ID Application*. `codesign-app.sh` falls back to an *Apple
+A **Developer ID Application** certificate for team `GUGQ9MB76A`, issued by
+Apple's G2 authority — "Renewing the Developer ID certificate" below has the
+steps. `codesign-app.sh` falls back to an *Apple
 Development* certificate when there is none, which is fine for a build that
 never leaves this Mac and which Apple's notary will refuse — it says so rather
 than letting the failure arrive ten minutes into an upload.
 
-Both candidates are filtered by team: the script reads each certificate's `OU`,
-which is the field `codesign` reports back as `TeamIdentifier`, and takes only
-`GUGQ9MB76A`'s. A Mac carrying somebody else's Developer ID therefore gets a
-refusal naming the team rather than a bundle signed by the wrong authority, and
-two identities on the same team are an error listing both — `codesign` cannot be
-handed an ambiguous identity name.
+Both candidates are filtered by team: each certificate's `OU` is read, which is
+the field `codesign` reports back as `TeamIdentifier`, and only `GUGQ9MB76A`'s
+are taken. A Mac carrying somebody else's Developer ID therefore gets a refusal
+naming the team rather than a bundle signed by the wrong authority. Two
+Developer ID identities on the team are expected around a renewal:
+`scripts/developer-id-identity.sh` takes the one issued by G2, then the later
+expiry, and the app is signed with its SHA-1, since `codesign` cannot be handed
+a name two identities share. Two *Apple Development* identities are still an
+error listing both.
 
 A **notarytool keychain profile**:
 
@@ -270,6 +273,32 @@ xcrun notarytool store-credentials mdql-notary \
 A notary profile is a team credential, not a per-app one, so a Mac that already
 notarizes something else for `GUGQ9MB76A` needs no second profile — point
 `make dist` at the existing one with `NOTARY_PROFILE=<name> make dist`.
+
+### Renewing the Developer ID certificate
+
+**The Developer ID certificate from August 2026 ends on February 1, 2027.** It
+was issued by Apple's original Developer ID authority, which expires that day
+and takes every certificate it issued with it; replacements come from the G2
+authority, and the one created on October 2, 2026 runs to September 17, 2031
+([Apple's steps](https://developer.apple.com/help/account/certificates/replace-developer-id-certificates)).
+`codesign-app.sh` prints the issuer and the expiry of what it signs with, and
+warns while that is the previous authority's.
+
+Nothing already released needs re-signing: a zip `make dist` produced is
+notarized and carries a secure timestamp, which is the case Apple says keeps
+working. There is no `.pkg`, the one thing Apple says must be re-signed.
+
+1. Keychain Access → Certificate Assistant → Request a Certificate From a
+   Certificate Authority, "Saved to disk". The private key is made in the login
+   keychain and stays there.
+2. [Certificates](https://developer.apple.com/account/resources/certificates/list)
+   → + → Developer ID Application → **G2 Sub-CA (Xcode 11.4.1 or later)** →
+   upload the request, download the `.cer`, double-click it. Account Holder only.
+   Any other Sub-CA issues another certificate that ends in February 2027. Do not
+   revoke the old one; the two coexist.
+3. `scripts/developer-id-identity.sh GUGQ9MB76A` now prints the new one (third
+   field `G2`), and the next `make dist` reads `issuer:   Developer ID
+   Certification Authority, OU G2` with no warning.
 
 ### Why notarization is not optional
 

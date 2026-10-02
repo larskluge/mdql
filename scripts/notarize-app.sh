@@ -131,7 +131,7 @@ case "$authority" in
 	echo "error: signed with '${authority:-no authority}', which Apple will not notarize." >&2
 	echo "  Notarization requires a 'Developer ID Application' certificate. scripts/codesign-app.sh" >&2
 	echo "  falls back to 'Apple Development' when no Developer ID exists on team $TEAM_ID — create" >&2
-	echo "  one in Xcode: Settings -> Accounts -> Manage Certificates -> + -> Developer ID Application." >&2
+	echo "  one from Apple's G2 authority: docs/releases.md, \"Renewing the Developer ID certificate\"." >&2
 	exit 1
 	;;
 esac

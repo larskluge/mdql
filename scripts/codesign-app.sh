@@ -88,10 +88,10 @@ team_of() {
 }
 
 # Every identity whose name contains $1 *and* whose certificate is team $TEAM_ID, one
-# bare common name per line. The team filter is the point: a Mac with a second
-# Developer ID, or with a personal-team "Apple Development" certificate, otherwise
-# gets all six items signed by the wrong authority and finds out at check_one, which
-# reports the wrong team without hinting that the fix is choosing another identity.
+# bare common name per line. The team filter is the point: a Mac with a personal-team
+# "Apple Development" certificate otherwise gets all six items signed by the wrong
+# authority and finds out at check_one, which reports the wrong team without hinting
+# that the fix is choosing another identity.
 pick() {
 	local name team
 	# `|| true` because grep exits 1 when nothing matches, which here is an answer and
@@ -111,37 +111,60 @@ pick() {
 		done
 }
 
-matches="$(pick "Developer ID Application")"
-kind="Developer ID — distributable, notarizable"
-if [ -z "$matches" ]; then
+# The Developer ID identity is chosen by developer-id-identity.sh, team filter
+# included, and signed with by SHA-1 rather than by name. Two of them on the team is
+# the ordinary state around a renewal, not an accident: the new certificate has the
+# old one's name, nothing requires the old one to go, and until February 1, 2027 one
+# of the two is from Apple's previous authority, which expires that day with
+# everything it issued. `codesign --sign "<name>"` refuses a name two identities
+# answer to; the script takes the G2 one, then the later expiry, and what it took is
+# printed below.
+developer_id="$("$SCRIPT_DIR/developer-id-identity.sh" "$TEAM_ID")"
+authority=""
+if [ -n "$developer_id" ]; then
+	IFS="$(printf '\t')" read -r identity _ authority expires identity_name <<EOF
+$developer_id
+EOF
+	kind="Developer ID — distributable, notarizable"
+else
 	matches="$(pick "Apple Development")"
 	kind="Apple Development — local install only, NOT notarizable"
-fi
 
-if [ -z "$matches" ]; then
-	echo "error: no codesigning identity available for team $TEAM_ID." >&2
-	echo "  Create one in Xcode: Settings -> Accounts -> select the $TEAM_ID team ->" >&2
-	echo "  Manage Certificates -> + -> 'Developer ID Application' (needed to notarize)" >&2
-	echo "  or 'Apple Development' (enough for a local install)." >&2
-	exit 1
-fi
+	if [ -z "$matches" ]; then
+		echo "error: no codesigning identity available for team $TEAM_ID." >&2
+		echo "  'Developer ID Application' (needed to notarize): developer.apple.com ->" >&2
+		echo "  Certificates -> + -> Developer ID Application -> G2 Sub-CA; docs/releases.md" >&2
+		echo "  has the steps. 'Apple Development' (enough for a local install): Xcode ->" >&2
+		echo "  Settings -> Accounts -> the $TEAM_ID team -> Manage Certificates -> +." >&2
+		exit 1
+	fi
 
-# Two certificates of the same kind on the same team — a renewal overlap, or a second
-# Developer ID — is not something to settle by taking the first. codesign is handed
-# the *name*, and refuses an ambiguous one anyway; saying which ones matched is the
-# difference between a fixable message and a mystery.
-if [ "$(printf '%s\n' "$matches" | wc -l | tr -d ' ')" -gt 1 ]; then
-	echo "error: team $TEAM_ID has more than one '$kind' identity on this Mac:" >&2
-	printf '%s\n' "$matches" | sed 's/^/    /' >&2
-	echo "  Remove the one you do not sign releases with in Keychain Access; codesign" >&2
-	echo "  cannot be given an ambiguous identity name." >&2
-	exit 1
+	# Two Apple Development certificates on the team is not something to settle by
+	# taking the first. This one is signed with by *name*, and codesign refuses an
+	# ambiguous one anyway; saying which ones matched is the difference between a
+	# fixable message and a mystery.
+	if [ "$(printf '%s\n' "$matches" | wc -l | tr -d ' ')" -gt 1 ]; then
+		echo "error: team $TEAM_ID has more than one '$kind' identity on this Mac:" >&2
+		printf '%s\n' "$matches" | sed 's/^/    /' >&2
+		echo "  Remove the one you do not sign with in Keychain Access; codesign cannot be" >&2
+		echo "  given an ambiguous identity name." >&2
+		exit 1
+	fi
+	identity="$matches"
+	identity_name="$matches"
 fi
-identity="$matches"
 
 echo "Signing $APP"
-echo "  identity: $identity"
+echo "  identity: $identity_name"
 echo "  kind:     $kind"
+if [ -n "$authority" ]; then
+	echo "  issuer:   Developer ID Certification Authority, OU $authority; expires $expires"
+	if [ "$authority" != "G2" ]; then
+		echo "warning: this certificate is from Apple's previous Developer ID authority and stops" >&2
+		echo "  signing on $expires. Create its G2 replacement — docs/releases.md," >&2
+		echo "  \"Renewing the Developer ID certificate\"." >&2
+	fi
+fi
 
 # --- Everything inside, deepest first ---------------------------------------
 #
