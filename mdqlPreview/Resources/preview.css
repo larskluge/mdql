@@ -163,6 +163,30 @@ img {
     height: auto;
 }
 
+/* Mermaid diagrams (rendered from ```mermaid fences by the in-page runtime) */
+.mdql-mermaid {
+    margin: 0 0 1em;
+    text-align: center;
+    overflow-x: auto;
+}
+
+.mdql-mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* A fence that failed to render keeps its source visible; mark it and say why */
+pre.mdql-mermaid-error {
+    border: 1px solid #c0392b;
+}
+
+.mdql-mermaid-error-msg {
+    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 0.8em;
+    color: #c0392b;
+    margin: -0.5em 0 1em;
+}
+
 hr {
     border: none;
     border-top: 1px solid var(--border-color);

@@ -44,6 +44,52 @@ make test
 
 The release tooling's Python suite first — it needs nothing installed and takes milliseconds — then the Xcode tests. GitHub Actions runs both on every push to `main` and every pull request.
 
+## Architecture
+
+Five Xcode targets in one app: a sandboxed Quick Look extension does the previewing, an unsandboxed XPC service embedded inside it does the things the sandbox forbids, and the host app doubles as a standalone viewer that skips the XPC hop entirely.
+
+```mermaid
+flowchart TB
+    QL(["Finder Quick Look — Space on a .md file"])
+
+    subgraph app["mdql.app"]
+        direction TB
+
+        subgraph appex["mdqlPreview.appex — sandboxed"]
+            direction TB
+            PC["PreviewController<br/><i>view-based preview</i>"]
+            MWC["MarkdownWebController<br/><i>WKWebView + script message handler</i>"]
+            MR["MarkdownRenderer<br/>swift-markdown (cmark-gfm)<br/>+ vendored mermaid.min.js"]
+            FW["FileWatcher<br/>DispatchSource · atomic-save recovery<br/>100 ms coalescing"]
+            WV["WKWebView"]
+        end
+
+        subgraph xpc["open-url.xpc — unsandboxed"]
+            OS["OpenURLService<br/>open · readFile · toggleCheckbox"]
+        end
+
+        DWC["DocumentWindowController<br/><i>standalone viewer window</i>"]
+    end
+
+    MD[("markdown file on disk")]
+    BR(["default browser"])
+
+    QL --> PC --> MWC
+    MWC --> MR
+    MR -->|"HTML"| WV
+    MD --> FW
+    FW -->|"body-only re-render,<br/>base64 innerHTML swap"| WV
+    WV -->|"link clicks & checkbox toggles<br/>(WKScriptMessageHandler)"| MWC
+    MWC -->|"openURL"| OS
+    OS --> BR
+    MWC -->|"readFile — linked sibling .md"| OS
+    MWC -->|"toggleCheckbox — single-byte write"| OS
+    OS --> MD
+    DWC -.->|"same engine, direct calls — no XPC"| MWC
+```
+
+See [docs/live-updates.md](docs/live-updates.md) for why the live-update path looks like this.
+
 ## How Live Updates Work
 
 QuickLook extensions run in a strict sandbox that blocks the obvious approaches (JS polling, embedded HTTP server, WebSocket, SSE). See [docs/live-updates.md](docs/live-updates.md) for the full write-up on what fails, what works (view-based preview + WKWebView + DispatchSource FileWatcher + base64 innerHTML injection), and why installation location matters.
