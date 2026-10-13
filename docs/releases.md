@@ -192,10 +192,10 @@ which is how to tell which build is the one Finder is actually running, and
 published artifact to the commit it was built from.
 
 `make version-test` is the bump tool's own suite — `scripts/test_version.py` and
-`scripts/test_changelog_section.py`, stdlib `unittest`, no pytest to install. It
+`scripts/test_changelog_section.py`, stdlib `unittest`, no pytest to install —
+and it runs the suites of `developer-id-identity.sh` and `install.sh` with it. It
 runs first in `make test`, and first in CI, because it needs nothing and takes
-milliseconds: a broken bump tool should not be discovered after a long
-`xcodebuild`.
+seconds: a broken bump tool should not be discovered after a long `xcodebuild`.
 
 ## The build to hand to someone else
 
@@ -398,10 +398,10 @@ Two workflows run on this repository, and neither of them releases.
 three steps in this order:
 
 1. **Test the version tooling** — `make version-test`, first because it needs
-   nothing installed and takes milliseconds.
+   nothing installed and takes seconds.
 2. **Build** —
    `xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS"`.
-3. **Run tests** — `make test`, which is `version-test` again in milliseconds and
+3. **Run tests** — `make test`, which is `version-test` again in seconds and
    then `xcodebuild … -scheme mdql … test`.
 
 The third step calls the Makefile's own target rather than repeating the

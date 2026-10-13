@@ -39,7 +39,7 @@ install:
 	@echo "Done. Test with: qlmanage -p README.md"
 
 # Every test in the repository. `version-test` runs first because it needs nothing
-# at all and takes milliseconds: a broken bump tool should not be discovered after
+# at all and takes seconds: a broken bump tool should not be discovered after
 # a long xcodebuild.
 test: version-test
 	xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' test
@@ -100,9 +100,10 @@ version:
 version-dry:
 	python3 scripts/version.py --dry-run $(VERSION_ARGS)
 
-# The bump tool's own suite. stdlib unittest — there is no pytest in this tree, and
-# adding one for two modules of pure functions would be a dependency to install on
-# every machine that runs `make test`.
+# The bump tool's own suite, and beside it the suites of the other scripts here:
+# developer-id-identity.sh and install.sh, each run against stubs. stdlib unittest —
+# there is no pytest in this tree, and adding one for a handful of modules would be a
+# dependency to install on every machine that runs `make test`.
 version-test:
 	python3 -m unittest discover -s scripts -p 'test_*.py'
 

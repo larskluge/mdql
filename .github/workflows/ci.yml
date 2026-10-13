@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Before the build, for the reason the Makefile gives: this suite needs
-      # nothing installed and takes milliseconds, and a broken bump tool should not
+      # nothing installed and takes seconds, and a broken bump tool should not
       # be discovered twenty minutes into an xcodebuild. It also carries
       # test_the_repositorys_own_pbxproj_is_sound, the only check anywhere that a
       # target-level MARKETING_VERSION has not been added to shadow the project-level
@@ -57,7 +57,7 @@ jobs:
       # scheme that runs the suite is `mdql`. Masked by the pipeline above, the error
       # was invisible, so the 116 tests ran on no push and no pull request while every
       # run reported success. A single entry point cannot drift from itself, and it is
-      # the one a developer runs locally. It repeats `version-test` in milliseconds,
+      # the one a developer runs locally. It repeats `version-test` in seconds,
       # which is a cheaper duplicate than a second xcodebuild line free to disagree
       # with the Makefile's.
       - name: Run tests

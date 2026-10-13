@@ -8,7 +8,7 @@ This file provides guidance to agents when working with code in this repository.
 # Build, install to /Applications, register extension, and verify
 make install
 
-# Run all tests — the bump tool's Python suite first, then the Xcode ones
+# Run all tests — the scripts' Python suites first, then the Xcode ones
 make test
 
 # Run a single test
@@ -19,7 +19,7 @@ xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' \
 qlmanage -p /path/to/file.md
 ```
 
-`make install` is the primary build command. It builds a Release binary, calls `scripts/install.sh` to copy to `/Applications/` and clean up stale registrations, then verifies pluginkit and lsregister have exactly one entry. The Xcode post-build phase also calls `scripts/install.sh` (with `SKIP_LAUNCH=1` since apps can't be launched during builds).
+`make install` is the primary build command. It builds a Release binary, calls `scripts/install.sh` to copy to `/Applications/` and clean up stale registrations, then verifies pluginkit and lsregister have exactly one entry. A viewer that is running is quit and relaunched on the new build with the documents it was showing; if one does not quit, `make install` fails and names its pid rather than leave it on the old build unannounced. The Xcode post-build phase also calls `scripts/install.sh` (with `SKIP_LAUNCH=1` since apps can't be launched during builds), where a running viewer is left alone and reported as a build warning.
 
 ## Releases
 
@@ -55,7 +55,7 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 
 ## Key Files
 
-- `scripts/install.sh` — Single source of truth for install + registration. Copies to /Applications, cleans stale lsregister/pluginkit entries, registers extension, launches app for pluginkit finalization.
+- `scripts/install.sh` — Single source of truth for install + registration. Copies to /Applications, unregisters every other `mdql.app` LaunchServices knows of, registers the extension, then launches the app for pluginkit finalization: running viewers are quit by pid and their documents reopened in the new build, and with none running the app is launched once and quit again. `scripts/test_install.py` runs it against a scratch directory and stubs (`MDQL_INSTALL_DIR`, `MDQL_LSREGISTER`), as part of `make version-test`.
 - `Makefile` — `make install` builds Release, calls `install.sh`, verifies no duplicates. `make clean` cleans build artifacts. The release path (`version`, `dist`, `release`, and the guards they depend on) lives at the bottom; [docs/releases.md](docs/releases.md) explains it.
 - `scripts/version.py`, `scripts/changelog-section.py` — The bump tool (pbxproj + CHANGELOG.md + commit + annotated tag) and the reader that hands one CHANGELOG section to `gh release create`. `make version-test` is their suite and runs first in `make test` and in CI.
 - `mdqlPreview/MarkdownRenderer.swift` — Core rendering. `render(markdown:title:showBackButton:interactive:appChrome:)` for full HTML with CSS (renders back chevron + hover status bar when `showBackButton` is true, headroom under the host app's titlebar when `appChrome` is), `renderBody()` for body-only HTML (used by innerHTML updates). `escapingAttributeValues()` escapes link/image URLs on the markup tree before formatting; `postProcessCheckboxes()` makes task-list checkboxes clickable when `interactive`. Uses `BundleAnchor` class for cross-target bundle resolution, and draws the build's `version.txt` badge in the corner.
@@ -89,6 +89,9 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 - **Xcode's RegisterWithLaunchServices re-registers from DerivedData after build scripts run.** The post-build script alone is not sufficient — `make install` runs `install.sh` again after xcodebuild completes to clean up re-registered DerivedData entries.
 - **The app sandbox prevents AppDelegate from running lsregister/qlmanage.** All registration logic must live in `scripts/install.sh` (unsandboxed). The AppDelegate is a no-op.
 - **pluginkit only discovers extensions when the host app is launched.** `lsregister -f -R` alone is not enough — `install.sh` must `open` the app and then quit it to finalize registration.
+- **`quit app "mdql"` quits one process, not the app.** AppleScript resolves the name (or the bundle id) to a single process. With two viewers running it quit the more recently launched one and exited 0, both times this was observed — which is how a `make install` left the older viewer, documents open, running the build it had just replaced. `install.sh` quits each viewer by pid instead (`NSRunningApplication.terminate` through `osascript -l JavaScript`, which needs no Automation permission), waits for the pid to go, and fails loudly if it does not.
+- **Never assume there is only one `mdql` process — a test run is enough to get a second.** `xcodebuild test` runs the install build phase like any other build: the phase's `$ACTION = test` guard never matches, because `ACTION` is `build` there. So `make test` replaces `/Applications/mdql.app` with a Debug build under whatever viewer is running; Xcode then registers the DerivedData product, LaunchServices makes *that* bundle the handler for Markdown files, and the next `open notes.md` launches a second viewer from DerivedData beside the first. `make install` puts it right: `install.sh` unregisters every `mdql.app` but the installed one (`lsregister -u` works on a path that no longer exists) and restarts all viewers as one.
+- **The documents a viewer is showing can be read from outside it.** `FileWatcher` holds each one open with `O_EVTONLY`, which `lsof -p <pid> +fg` reports as `EVO` (`0x8000` with `-F G`); the other regular files in the process, WebKit's databases and Metal's libraries, are opened for reading or writing. That is what lets `install.sh` reopen them after a restart; the app has no scripting interface to ask.
 - **`codesign --force --deep` breaks extension identity.** When re-signing the host app after copying to /Applications, use `--sign -` without `--deep` to preserve the extension's original signature.
 - **Sandboxed QuickLook extensions cannot call `NSWorkspace.shared.open()`.** The extension sandbox profile is missing `(allow lsopen)`. Fix: unsandboxed XPC service embedded in `Contents/XPCServices/` that calls `NSWorkspace.shared.open()` on behalf of the extension via `NSXPCConnection(serviceName:)`.
 - **The QuickLook extension sandbox only grants read access to the initially-previewed file.** Following a relative `.md` link cannot use `String(contentsOf:)` on the sibling path — it fails with "don't have permission to view it." Fix: extend the unsandboxed XPC service with a `readFile(at:withReply:)` method and read sibling files through it.

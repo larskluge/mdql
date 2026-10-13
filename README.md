@@ -42,7 +42,7 @@ This builds a Release binary, copies it to `/Applications/`, cleans up all stale
 make test
 ```
 
-The release tooling's Python suite first — it needs nothing installed and takes milliseconds — then the Xcode tests. GitHub Actions runs both on every push to `main` and every pull request.
+The Python suites of the release and install scripts first — they need nothing installed and take seconds — then the Xcode tests. GitHub Actions runs both on every push to `main` and every pull request.
 
 ## How Live Updates Work
 
