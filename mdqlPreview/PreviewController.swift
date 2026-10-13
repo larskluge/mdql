@@ -4,7 +4,7 @@ import Quartz
 import WebKit
 
 class PreviewController: NSViewController, QLPreviewingController {
-    private let controller = MarkdownWebController()
+    let controller = MarkdownWebController()
     private var xpcConnection: NSXPCConnection?
 
     /// Injectable URL opener. Default uses the XPC service to open in the default browser.
@@ -23,6 +23,12 @@ class PreviewController: NSViewController, QLPreviewingController {
 
     deinit {
         xpcConnection?.invalidate()
+        controller.teardown()
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        controller.teardown()
     }
 
     override func loadView() {

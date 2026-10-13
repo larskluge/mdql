@@ -8,3 +8,7 @@ default.profraw
 
 # `make version-test` writes one of these under scripts/ on every run.
 __pycache__/
+
+.metaproject.json
+.serena/
+
