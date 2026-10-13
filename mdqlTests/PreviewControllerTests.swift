@@ -278,4 +278,12 @@ final class PreviewControllerTests: XCTestCase {
         // In test bundle, version.txt may not exist — should fall back to "dev"
         XCTAssertFalse(version.isEmpty, "Version should never be empty")
     }
+
+    func testPreviewControllerSetsAppearanceFromSystem() {
+        let preview = PreviewController()
+        _ = preview.view
+        let expected = NSApp?.effectiveAppearance ?? NSApplication.shared.effectiveAppearance
+        XCTAssertEqual(preview.view.appearance?.name, expected.name,
+                       "PreviewController view appearance should match system effective appearance")
+    }
 }
