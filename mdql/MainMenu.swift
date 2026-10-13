@@ -23,15 +23,28 @@ enum MainMenu {
         let submenu = NSMenu(title: "mdql")
         submenu.autoenablesItems = false
 
-        let quit = NSMenuItem(
-            title: "Quit",
-            action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q"
+        submenu.addItem(makeAppItem("Hide mdql", #selector(NSApplication.hide(_:)), key: "h"))
+
+        let hideOthers = makeAppItem(
+            "Hide Others", #selector(NSApplication.hideOtherApplications(_:)), key: "h"
         )
-        quit.target = NSApp
-        submenu.addItem(quit)
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        submenu.addItem(hideOthers)
+
+        submenu.addItem(
+            makeAppItem("Show All", #selector(NSApplication.unhideAllApplications(_:)), key: "")
+        )
+        submenu.addItem(.separator())
+        submenu.addItem(makeAppItem("Quit", #selector(NSApplication.terminate(_:)), key: "q"))
 
         item.submenu = submenu
+        return item
+    }
+
+    /// An app-menu item aimed at `NSApp` itself rather than the responder chain.
+    private static func makeAppItem(_ title: String, _ action: Selector, key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = NSApp
         return item
     }
 
