@@ -34,6 +34,7 @@
 		G10000010000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* main.swift */; };
 		G10000020000000000000002 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
 		G10000030000000000000003 /* preview.css in CopyFiles */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
+		G10000060000000000000006 /* mermaid.min.js in CopyFiles */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
 		G10000040000000000000004 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = G70000010000000000000001 /* Markdown */; };
 		G10000050000000000000005 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
 		H10000010000000000000001 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
@@ -58,6 +59,10 @@
 		J10000010000000000000001 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
 		J10000020000000000000002 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
 		J10000030000000000000003 /* MainMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000020000000000000002 /* MainMenuTests.swift */; };
+		J10000040000000000000004 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
+		J10000050000000000000005 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
+		J10000060000000000000006 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
+		J10000070000000000000007 /* mermaid.md in Resources */ = {isa = PBXBuildFile; fileRef = J20000070000000000000007 /* mermaid.md */; };
 		K10000010000000000000001 /* MarkdownCheckboxScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000010000000000000001 /* MarkdownCheckboxScanner.swift */; };
 		K10000020000000000000002 /* MarkdownCheckboxScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000010000000000000001 /* MarkdownCheckboxScanner.swift */; };
 		K10000030000000000000003 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
@@ -111,6 +116,7 @@
 			dstSubfolderSpec = 16;
 			files = (
 				G10000030000000000000003 /* preview.css in CopyFiles */,
+				G10000060000000000000006 /* mermaid.min.js in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -165,6 +171,8 @@
 		A20000020000000000000002 /* PreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewController.swift; sourceTree = "<group>"; };
 		A20000030000000000000003 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		A20000040000000000000004 /* preview.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = preview.css; sourceTree = "<group>"; };
+		J20000040000000000000004 /* mermaid.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = mermaid.min.js; sourceTree = "<group>"; };
+		J20000070000000000000007 /* mermaid.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = mermaid.md; sourceTree = "<group>"; };
 		A20000050000000000000005 /* MarkdownRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRendererTests.swift; sourceTree = "<group>"; };
 		A20000060000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000070000000000000007 /* basic.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = basic.md; sourceTree = "<group>"; };
@@ -305,6 +313,7 @@
 				A2000000000000000000000A /* special-chars.md */,
 				F20000010000000000000001 /* front-matter.md */,
 				B20000110000000000000011 /* code-with-html.md */,
+				J20000070000000000000007 /* mermaid.md */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -313,6 +322,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000040000000000000004 /* preview.css */,
+				J20000040000000000000004 /* mermaid.min.js */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -536,6 +546,7 @@
 			files = (
 				A10000100000000000000010 /* Assets.xcassets in Resources */,
 				I10000080000000000000008 /* preview.css in Resources */,
+				J10000040000000000000004 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -544,6 +555,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000040000000000000004 /* preview.css in Resources */,
+				J10000050000000000000005 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -558,6 +570,8 @@
 				F10000010000000000000001 /* front-matter.md in Resources */,
 				B10000110000000000000011 /* code-with-html.md in Resources */,
 				A1000000000000000000000D /* preview.css in Resources */,
+				J10000070000000000000007 /* mermaid.md in Resources */,
+				J10000060000000000000006 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
