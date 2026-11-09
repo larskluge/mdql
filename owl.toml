@@ -1,0 +1,13 @@
+# How owl runs this repo's full suite: ~/code/owl/docs/specs/2026-11-10-owl-design.md §4.
+# make test's build phase copies the app into /Applications unless CI=true, so
+# the full suite runs only in the tart-ci VM, through ci.yml.
+tier = "local"
+smoke = "make version-test"
+one_test = "CI=true xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' -only-testing:mdqlTests/<Class>/<test> test"
+
+[[suite]]
+name = "unit"
+run = "make test"
+engine = "tart-ci"
+workflow = "ci.yml"
+timeout = "15m"

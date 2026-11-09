@@ -9,10 +9,11 @@ This file provides guidance to agents when working with code in this repository.
 make install
 
 # Run all tests — the scripts' Python suites first, then the Xcode ones
+# (in the tart-ci VM: on this Mac its build phase replaces /Applications/mdql.app)
 make test
 
-# Run a single test
-xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' \
+# Run a single test; CI=true keeps the build phase from replacing /Applications/mdql.app
+CI=true xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' \
   -only-testing:mdqlTests/MarkdownRendererTests/testRenderBasicMarkdown test
 
 # Manual preview test
@@ -99,3 +100,12 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 - **swift-markdown's `HTMLFormatter` interpolates URLs into attribute values raw.** `Link.destination`, `Image.source` and `Image.title` go straight into `href="…"` / `src="…"` / `title="…"`, so a destination containing `"` closes the attribute and injects its own — `[x](a"onmouseover="alert(1))` is enough. Fix: `MarkdownRenderer.escapingAttributeValues()` escapes those values **on the markup tree, before formatting**. Do not try to repair the formatter's output with a regex: once the quote is written the injected attribute is indistinguishable from a real one, which is why the older `postProcessEscaping()` never actually closed this hole. See `docs/specs/2026-04-17-html-escaping-fix-design.md` for the original analysis (its `CodeBlock.code` / `InlineCode.code` / `Heading.plainText` findings are now fixed upstream).
 - **swift-markdown is pinned to an exact revision, and `Package.resolved` is committed.** It used to track `branch = main` while `.gitignore` excluded the whole `project.xcworkspace/`, so every fresh checkout silently resolved a different library. Upstream then added escaping to `CodeBlock.code` and `InlineCode.code` and made `visitHeading` descend into its children — which turned the old post-processing pass into a *double*-escape, rendering `&amp;` and literal `<code>` tags. Bump the pin deliberately and run the tests; never float it.
 - **Raw inline HTML in body text is rendered, not escaped.** `visitInlineHTML` / `visitHTMLBlock` emit `rawHTML` verbatim, so a `.md` file can put live markup — including `<script>` — into the preview, which runs JS with a bridge that opens URLs and writes to the file. Headings are the exception: `AttributeValueEscaper.visitHeading` turns inline HTML into text, so `## Using <Component>` shows the tag. Narrowing this further is a product decision, not a bug fix — it would stop `<details>` and `<img>` working in READMEs.
+
+<!-- BEGIN OWL -->
+## Testing (owl tier: local)
+
+- Before landing: the tests your change touches, plus `make version-test` (smoke). Never the full suite in-session.
+- One test: `CI=true xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' -only-testing:mdqlTests/<Class>/<test> test`.
+- Full suite: `make test` (tart-ci VM only, through `ci.yml`). owl runs it on main while u26 is locked and quiet; `owl run mdql` runs it now.
+- After pushing: nothing to watch. owl reports a red suite.
+<!-- END OWL -->
