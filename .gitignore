@@ -8,3 +8,10 @@ default.profraw
 
 # `make version-test` writes one of these under scripts/ on every run.
 __pycache__/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
