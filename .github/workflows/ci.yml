@@ -1,16 +1,18 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # No push trigger. On main this runs when owl (~/code/owl) dispatches it, on
+  # u26 while the screen is locked and the machine is quiet, so a landing does
+  # not boot a VM mid-day.
   pull_request:
     branches: [main]
-  # By hand, on any branch: how a runner change is tried before it lands.
+  # owl's runs on main; by hand, on any branch: how a runner change is tried
+  # before it lands.
   workflow_dispatch:
 
 jobs:
   build-and-test:
-    # An allowlist: a push, a manual dispatch, or a pull request from a branch of
+    # An allowlist: a dispatch (owl's or by hand) or a pull request from a branch of
     # this repo runs on the on-demand Tart runner on the maintainer's Mac
     # (larskluge/tart-ci); anything else — a fork's PR, a PR whose head repo was
     # deleted, any event added later — goes to GitHub's hosted runner, so a fork's
@@ -23,7 +25,7 @@ jobs:
     # job when a legitimate one is queued beside it. The boundary is the fork-PR
     # approval click (policy: all_external_contributors). Before approving a fork's
     # run, read any change under .github/workflows/ that asks for `tart`.
-    runs-on: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","macOS","arm64","tart"]') || fromJSON('["macos-latest"]') }}
+    runs-on: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON('["self-hosted","macOS","arm64","tart"]') || fromJSON('["macos-latest"]') }}
     # A ceiling, not an estimate: hosted runs took 1-2.5 minutes (2026), and the
     # Tart VM starts cold (no DerivedData, swift-markdown fetched afresh). Well under
     # the runner's 90-minute MAX_JOB_SECONDS.

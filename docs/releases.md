@@ -156,7 +156,7 @@ on the machine it is installed on.
 So `scripts/version.py` refuses to run when the shape breaks — a third
 occurrence of either setting, only one, or two that disagree — and each refusal
 names the file, the lines, and what would have shipped. CI runs that check on
-every push and pull request: `make version-test` is `.github/workflows/ci.yml`'s
+every pull request and every owl run on `main`: `make version-test` is `.github/workflows/ci.yml`'s
 first step, and it carries `test_the_repositorys_own_pbxproj_is_sound`, which
 reads this repository's actual pbxproj rather than a fixture. A change that adds
 a target-level override fails there in milliseconds, rather than at the next
@@ -394,8 +394,8 @@ one.
 
 Two workflows run on this repository, and neither of them releases.
 
-`.github/workflows/ci.yml`, on every push to `main` and every pull request, runs
-three steps in this order:
+`.github/workflows/ci.yml`, on every pull request to `main` and on `main` when owl
+dispatches it, runs three steps in this order:
 
 1. **Test the version tooling** — `make version-test`, first because it needs
    nothing installed and takes seconds.
