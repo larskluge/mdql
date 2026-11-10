@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to agents when working with code in this repository.
+mdql is a macOS Quick Look extension that renders Markdown files, live as they change, plus a standalone viewer app that renders them the same way. [README.md](README.md) is the user's view.
 
 ## Build & Test Commands
 
@@ -34,9 +34,9 @@ make dist                             # Release build → Developer ID sign → 
 make release                          # gh release create: the CHANGELOG section + an Install stanza as the body
 ```
 
-Skipping the push does not fail late: `make release` refuses until the tag is on `origin`, because `gh release create` creates a tag it cannot find there — on the remote default branch's HEAD — and would publish that instead. The tag `make version` writes is annotated (`git tag -a`), which is what `--follow-tags` carries; a lightweight one would be silently skipped by a push that still exits 0. `make dist` refuses a dirty tree, since the version-stamp build phase bakes `-dirty` into the badge drawn in every preview's corner. `make release` unpacks the zip and checks it holds one `mdql.app` of this version, stapled and Gatekeeper-accepted — and, by reading the `version.txt` that build phase stamps into the appex, that it was built from the tagged commit and over a clean tree; every other check there reads the tree rather than the artifact, so nothing else would notice. It also refuses unless `origin` is `larskluge/mdql`, since that is the repository `gh` is pointed at while the tag check asks `origin`. The body it publishes is the CHANGELOG section plus a fixed **Install** stanza appended by the Makefile — boilerplate for a download page, which is why it is not in `CHANGELOG.md`.
+Skipping the push does not fail late: `make release` refuses until the tag is on `origin`. Every refusal on that path, and why each exists, is in docs/releases.md.
 
-The version lives in `mdql.xcodeproj/project.pbxproj` as project-level `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` — one pair, inherited by all five targets, and referenced as `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` from the three `Info.plist`s that ship inside `mdql.app` (app, appex, XPC service). **Never edit them by hand, and never add a target-level override**: macOS refuses to load an appex whose `CFBundleVersion` disagrees with its containing app's, and `scripts/version.py` refuses to run when the pbxproj has anything other than exactly those two declarations of each.
+The version lives in `mdql.xcodeproj/project.pbxproj` as project-level `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, inherited by all five targets. **Never edit them by hand, and never add a target-level override**: macOS refuses to load an appex whose `CFBundleVersion` disagrees with its containing app's, and `scripts/version.py` refuses any other shape (docs/releases.md → "Where the number lives").
 
 ## Architecture
 
@@ -52,7 +52,7 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 
 **Why reading linked `.md` files needs XPC:** The extension sandbox only grants read access to the file QuickLook initially passed in. Sibling `.md` files referenced by relative links must be read through `OpenURLProtocol.readFile(at:withReply:)` on the unsandboxed XPC service. `loadMarkdownFile` handles the initial file (uses `String(contentsOf:)` directly); navigation uses `readFileViaXPC`.
 
-**Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, branch: main) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Added to mdqlPreview and mdqlTests targets.
+**Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, pinned to an exact revision) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Linked by every target but mdql-open-url.
 
 ## Key Files
 
@@ -77,29 +77,19 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 - App sandbox on the extension only — read-only file access, plus `com.apple.security.network.client`. The host app is deliberately unsandboxed (empty `<dict/>` entitlements), and the XPC service has no entitlements at all; `scripts/codesign-app.sh` reads all three back out of the finished signature.
 - CSS is loaded from the bundle at runtime via `Bundle(for: BundleAnchor.self)`
 - **WKWebView only. Never use legacy `WebView`.** The entire project uses `WKWebView` exclusively (mdqlPreview extension, mdql-screenshot CLI, and any future targets). The deprecated `WebView` class must never be introduced — it was fully removed and replaced by `WKWebView` with the `com.apple.security.network.client` entitlement.
+- **Never `.allow` a link-activated navigation.** `decidePolicyFor` cancels every `.linkActivated` action and the JS message handlers dispatch `openURL` and `openMarkdown`, since WKWebView's own navigation races `loadHTMLString`.
+- **Escape link and image attribute values on the markup tree, before formatting** (`escapingAttributeValues()`), never by repairing `HTMLFormatter`'s output.
+- **swift-markdown stays pinned** to an exact revision, with `Package.resolved` committed: bump the pin deliberately and run the tests; never float it.
+- Raw inline HTML in body text renders; headings show it as text. Narrowing that is a product decision, not a bug fix.
+- Registration (lsregister, pluginkit) lives only in `scripts/install.sh`, which quits viewers by pid, never by name: there can always be more than one `mdql` process.
+- Re-sign the installed app with `--sign -`, never `--deep`, which breaks the extension's identity.
 
-## Learnings
+## Docs
 
-- **WKWebView requires `com.apple.security.network.client` entitlement in sandboxed QuickLook extensions.** Its out-of-process architecture (GPU, Networking, WebContent XPC subprocesses) needs this entitlement even for local HTML. Without it, the view renders blank. This was a known WebKit bug on macOS Big Sur (fixed in macOS 12 via WebKit Changeset 271895).
-- **NSAttributedString(html:) does NOT support modern CSS.** No CSS custom properties (`var()`), no `@media` queries, no advanced selectors. Produces visually broken output with our stylesheet.
-- **Never use legacy `WebView` (deprecated macOS 10.14).** It was previously used as a workaround for sandbox issues but has been fully removed. WKWebView with `network.client` entitlement is the correct and only approach for macOS 12+.
-- **`@main` on NSApplicationDelegate doesn't wire up the delegate.** Must use an explicit `@main enum Main` that creates `NSApplication.shared`, sets the delegate, and calls `app.run()`.
-- **JavaScript `atob()` produces Latin-1, not UTF-8.** Multi-byte UTF-8 characters (em-dashes, etc.) get mangled. Fix: `new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)))`.
-- **`Bundle(for: PreviewController.self)` fails cross-target.** When MarkdownRenderer is compiled into multiple targets, the class reference resolves to the wrong bundle. Fix: private `BundleAnchor` class in the same file as the bundle lookup.
-- **Finder only discovers QL extensions from ~/Applications or /Applications.** DerivedData builds don't register reliably, causing "file icon only" preview. Multiple DerivedData copies cause duplicate registrations and crashes. Automated via `scripts/install.sh`.
-- **Xcode's RegisterWithLaunchServices re-registers from DerivedData after build scripts run.** The post-build script alone is not sufficient — `make install` runs `install.sh` again after xcodebuild completes to clean up re-registered DerivedData entries.
-- **The app sandbox prevents AppDelegate from running lsregister/qlmanage.** All registration logic must live in `scripts/install.sh` (unsandboxed). The AppDelegate is a no-op.
-- **pluginkit only discovers extensions when the host app is launched.** `lsregister -f -R` alone is not enough — `install.sh` must `open` the app and then quit it to finalize registration.
-- **`quit app "mdql"` quits one process, not the app.** AppleScript resolves the name (or the bundle id) to a single process. With two viewers running it quit the more recently launched one and exited 0, both times this was observed — which is how a `make install` left the older viewer, documents open, running the build it had just replaced. `install.sh` quits each viewer by pid instead (`NSRunningApplication.terminate` through `osascript -l JavaScript`, which needs no Automation permission), waits for the pid to go, and fails loudly if it does not.
-- **Never assume there is only one `mdql` process — a test run is enough to get a second.** `xcodebuild test` runs the install build phase like any other build: the phase's `$ACTION = test` guard never matches, because `ACTION` is `build` there. So `make test` replaces `/Applications/mdql.app` with a Debug build under whatever viewer is running; Xcode then registers the DerivedData product, LaunchServices makes *that* bundle the handler for Markdown files, and the next `open notes.md` launches a second viewer from DerivedData beside the first. `make install` puts it right: `install.sh` unregisters every `mdql.app` but the installed one (`lsregister -u` works on a path that no longer exists) and restarts all viewers as one.
-- **The documents a viewer is showing can be read from outside it.** `FileWatcher` holds each one open with `O_EVTONLY`, which `lsof -p <pid> +fg` reports as `EVO` (`0x8000` with `-F G`); the other regular files in the process, WebKit's databases and Metal's libraries, are opened for reading or writing. That is what lets `install.sh` reopen them after a restart; the app has no scripting interface to ask.
-- **`codesign --force --deep` breaks extension identity.** When re-signing the host app after copying to /Applications, use `--sign -` without `--deep` to preserve the extension's original signature.
-- **Sandboxed QuickLook extensions cannot call `NSWorkspace.shared.open()`.** The extension sandbox profile is missing `(allow lsopen)`. Fix: unsandboxed XPC service embedded in `Contents/XPCServices/` that calls `NSWorkspace.shared.open()` on behalf of the extension via `NSXPCConnection(serviceName:)`.
-- **The QuickLook extension sandbox only grants read access to the initially-previewed file.** Following a relative `.md` link cannot use `String(contentsOf:)` on the sibling path — it fails with "don't have permission to view it." Fix: extend the unsandboxed XPC service with a `readFile(at:withReply:)` method and read sibling files through it.
-- **`WKNavigationDelegate` races with `loadHTMLString` on link-activated navigations.** When a user clicks a link, WKWebView's default navigation can clobber an in-flight `loadHTMLString` call. In `decidePolicyFor`, cancel all `.linkActivated` actions and let JS message handlers dispatch to Swift for both `openURL` (http/https) and `openMarkdown` (relative `.md`) — never `.allow` a link-activated navigation.
-- **swift-markdown's `HTMLFormatter` interpolates URLs into attribute values raw.** `Link.destination`, `Image.source` and `Image.title` go straight into `href="…"` / `src="…"` / `title="…"`, so a destination containing `"` closes the attribute and injects its own — `[x](a"onmouseover="alert(1))` is enough. Fix: `MarkdownRenderer.escapingAttributeValues()` escapes those values **on the markup tree, before formatting**. Do not try to repair the formatter's output with a regex: once the quote is written the injected attribute is indistinguishable from a real one, which is why the older `postProcessEscaping()` never actually closed this hole. See `docs/specs/2026-04-17-html-escaping-fix-design.md` for the original analysis (its `CodeBlock.code` / `InlineCode.code` / `Heading.plainText` findings are now fixed upstream).
-- **swift-markdown is pinned to an exact revision, and `Package.resolved` is committed.** It used to track `branch = main` while `.gitignore` excluded the whole `project.xcworkspace/`, so every fresh checkout silently resolved a different library. Upstream then added escaping to `CodeBlock.code` and `InlineCode.code` and made `visitHeading` descend into its children — which turned the old post-processing pass into a *double*-escape, rendering `&amp;` and literal `<code>` tags. Bump the pin deliberately and run the tests; never float it.
-- **Raw inline HTML in body text is rendered, not escaped.** `visitInlineHTML` / `visitHTMLBlock` emit `rawHTML` verbatim, so a `.md` file can put live markup — including `<script>` — into the preview, which runs JS with a bridge that opens URLs and writes to the file. Headings are the exception: `AttributeValueEscaper.visitHeading` turns inline HTML into text, so `## Using <Component>` shows the tag. Narrowing this further is a product decision, not a bug fix — it would stop `<details>` and `<img>` working in READMEs.
+- [docs/releases.md](docs/releases.md) — cutting a release: the bump, signing, notarization, publishing, and why there is no release CI.
+- [docs/live-updates.md](docs/live-updates.md) — how live previews work inside the Quick Look sandbox, and what fails there.
+- [docs/learnings.md](docs/learnings.md) — the platform gotchas behind the constraints above, each with what goes wrong and the fix. New ones go there, not here.
+- `docs/specs/` — design specs, `<date>-<topic>-design.md`.
 
 <!-- BEGIN OWL -->
 ## Testing (owl tier: local)
