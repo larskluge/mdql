@@ -111,6 +111,19 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertEqual(receivedURLs[1].scheme, "http")
     }
 
+    func testOpenURLRefusesSchemesOutsideTheAllowlist() {
+        let controller = MarkdownWebController()
+        var opened: [String] = []
+        controller.openURL = { opened.append($0.absoluteString) }
+
+        for string in refusedURLs {
+            controller.handleOpenURL(string, background: false)
+        }
+        controller.handleOpenURL("mailto:someone@example.com", background: false)
+
+        XCTAssertEqual(opened, ["mailto:someone@example.com"], "Only http, https and mailto may be opened")
+    }
+
     // MARK: - XPC protocol
 
     func testOpenURLProtocolConformance() {
@@ -237,6 +250,36 @@ final class PreviewControllerTests: XCTestCase {
         // fileURL unchanged because extension guard rejects .txt
         XCTAssertEqual(controller.fileURL?.lastPathComponent, "one.md",
                        "Should not navigate to non-markdown files")
+    }
+
+    func testHandleOpenMarkdownReadsOnlyMarkdownUnderTheDocumentsFolder() throws {
+        let root = try makeFolder()
+        let document = try write("# One", to: root.appendingPathComponent("docs/one.md"))
+        try write("# Two", to: root.appendingPathComponent("docs/two.md"))
+        try write("# Deep", to: root.appendingPathComponent("docs/sub/deep.md"))
+        try write("plain", to: root.appendingPathComponent("docs/notes.txt"))
+        let outside = try write("secret", to: root.appendingPathComponent("private.md"))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("docs/link.md"), withDestinationURL: outside)
+
+        let controller = MarkdownWebController()
+        var read: [String] = []
+        controller.readFile = { url, completion in
+            read.append(url.lastPathComponent)
+            completion(try? String(contentsOf: url, encoding: .utf8))
+        }
+        try controller.loadMarkdownFile(at: document)
+
+        for href in [outside.path, "../private.md", "link.md", "notes.txt"] {
+            controller.handleOpenMarkdown(href)
+        }
+        XCTAssertEqual(read, [], "Nothing outside the document's folder, and nothing but Markdown, may be read")
+
+        controller.handleOpenMarkdown("sub/deep.md")
+        controller.handleOpenMarkdown("../two.md")
+        controller.handleOpenMarkdown("../../private.md")
+        XCTAssertEqual(read, ["deep.md", "two.md"],
+                       "A sibling and a subfolder file may be read, the folder staying the original document's")
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "two.md")
     }
 
     func testFileURLDidChangeFiresWhenFollowingALinkToAnotherFile() throws {

@@ -70,6 +70,85 @@ final class RenderedPageTests: XCTestCase {
         XCTAssertEqual(try evaluate("typeof window.__pwned", in: shown.webView) as? String, "undefined")
     }
 
+    // MARK: - The page never navigates away from mdql's own
+
+    /// A port nothing listens on: a navigation that is let through starts,
+    /// shows in `webView.url`, and fails at once, without leaving the Mac.
+    private let elsewhere = "http://127.0.0.1:9/"
+
+    func testMetaRefreshDoesNotNavigate() throws {
+        try assertStaysPut("<meta http-equiv=\"refresh\" content=\"0; url=\(elsewhere)\">\n\nStill here.")
+    }
+
+    func testMetaRefreshToAnEmptyPageDoesNotReplaceTheDocument() throws {
+        try assertStaysPut("<meta http-equiv=\"refresh\" content=\"0; url=about:blank\">\n\nStill here.")
+    }
+
+    func testFormSubmitDoesNotNavigate() throws {
+        try assertStaysPut("<form action=\"\(elsewhere)\"><button>Go</button></form>\n\nStill here.",
+                           then: "document.querySelector('button').click()")
+    }
+
+    func testScriptedNavigationDoesNotLeaveThePage() throws {
+        try assertStaysPut("Still here.", then: "window.open('\(elsewhere)', '_self')")
+        try assertStaysPut("Still here.", then: "window.open('\(elsewhere)')")
+        try assertStaysPut("Still here.", then: "location.href = '\(elsewhere)'")
+    }
+
+    func testTheLatestOfTwoQuickLoadsShows() throws {
+        let shown = try show("First.")
+        let second = shown.file.deletingLastPathComponent().appendingPathComponent("second.md")
+        try Data("Second.".utf8).write(to: second)
+        let third = shown.file.deletingLastPathComponent().appendingPathComponent("third.md")
+        try Data("Third.".utf8).write(to: third)
+
+        try shown.controller.loadMarkdownFile(at: second)
+        try shown.controller.loadMarkdownFile(at: third)
+
+        try waitUntil("document.body.innerText.includes('Third.') && document.readyState === 'complete'", in: shown.webView)
+    }
+
+    // MARK: - Only mdql's own page reaches the bridge
+
+    func testMessageFromASubframeIsIgnored() throws {
+        var opened: [String] = []
+        let page = try show("Text.") { controller in
+            controller.openURL = { opened.append($0.absoluteString) }
+        }.webView
+
+        try evaluate("""
+            var frame = document.createElement('iframe');
+            document.body.appendChild(frame);
+            frame.contentWindow.webkit.messageHandlers.mdql.postMessage({action: 'openURL', url: 'https://example.com/framed'});
+            true
+            """, in: page)
+        try evaluate("webkit.messageHandlers.mdql.postMessage({action: 'openURL', url: 'https://example.com/main'}); true", in: page)
+        let deadline = Date().addingTimeInterval(5)
+        while opened.isEmpty && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.05)) }
+        settle()
+
+        XCTAssertEqual(opened, ["https://example.com/main"], "Only the main frame's message may act")
+    }
+
+    func testMessageFromAPageOtherThanMdqlsIsIgnored() throws {
+        // Were a navigation ever to get through, the page it reached must
+        // find the bridge deaf. Detaching the navigation delegate lets the
+        // test put such a page in the main frame.
+        var opened: [String] = []
+        let shown = try show("Text.") { controller in
+            controller.openURL = { opened.append($0.absoluteString) }
+        }
+        shown.webView.navigationDelegate = nil
+        shown.webView.loadHTMLString("<p>Elsewhere.</p>", baseURL: URL(string: "https://attacker.example/"))
+        try waitUntil("document.body.innerText.includes('Elsewhere.')", in: shown.webView)
+
+        try evaluate("webkit.messageHandlers.mdql.postMessage({action: 'openURL', url: 'https://example.com/'}); true",
+                     in: shown.webView)
+        settle()
+
+        XCTAssertEqual(opened, [], "A main frame showing anything but mdql's page may not use the bridge")
+    }
+
     // MARK: - mdql's own features still work
 
     func testFollowingAMarkdownLinkAndGoingBackStillWork() throws {
@@ -192,7 +271,30 @@ final class RenderedPageTests: XCTestCase {
     }
 
     /// Lets anything the page queued (an error event, a navigation) run.
-    private func settle() {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    private func settle(_ seconds: TimeInterval = 0.3) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    /// Shows `markdown`, runs `script` in the page if given, and checks that
+    /// the web view never left mdql's page: `webView.url` names a navigation
+    /// as soon as it starts, even one that then fails.
+    private func assertStaysPut(_ markdown: String, then script: String? = nil,
+                                file: StaticString = #filePath, line: UInt = #line) throws {
+        var visited: [String] = []
+        var observation: NSKeyValueObservation?
+        let shown = try show(markdown) { controller in
+            observation = controller.webView.observe(\.url) { webView, _ in
+                visited.append(webView.url?.absoluteString ?? "nil")
+            }
+        }
+        if let script { try evaluate(script + "; true", in: shown.webView) }
+        settle(1)
+        observation?.invalidate()
+
+        XCTAssertEqual(visited.filter { $0 != "about:blank" }, [], "The page navigated away", file: file, line: line)
+        XCTAssertEqual(shown.webView.url?.absoluteString, "about:blank", file: file, line: line)
+        let visible = try visibleText(of: shown.webView)
+        XCTAssertTrue(visible.contains("Still here."), "The document must still show; visible: \(visible)",
+                      file: file, line: line)
     }
 }

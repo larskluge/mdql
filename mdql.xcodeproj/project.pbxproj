@@ -69,6 +69,14 @@
 		L10000030000000000000003 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000020000000000000002 /* MarkdownDocument.swift */; };
 		K10000070000000000000007 /* MarkdownCheckboxScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000010000000000000001 /* MarkdownCheckboxScanner.swift */; };
 		K10000080000000000000008 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
+		M10000010000000000000001 /* AccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* AccessPolicy.swift */; };
+		M10000020000000000000002 /* AccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* AccessPolicy.swift */; };
+		M10000030000000000000003 /* AccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* AccessPolicy.swift */; };
+		M10000040000000000000004 /* AccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* AccessPolicy.swift */; };
+		M10000050000000000000005 /* AccessPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000010000000000000001 /* AccessPolicy.swift */; };
+		M10000060000000000000006 /* AccessPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000020000000000000002 /* AccessPolicyTests.swift */; };
+		M10000070000000000000007 /* OpenURLServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20000030000000000000003 /* OpenURLServiceTests.swift */; };
+		M10000080000000000000008 /* OpenURLService.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000020000000000000002 /* OpenURLService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -207,6 +215,9 @@
 		K20000040000000000000004 /* CheckboxToggleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckboxToggleTests.swift; sourceTree = "<group>"; };
 		L20000010000000000000001 /* RenderedPageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderedPageTests.swift; sourceTree = "<group>"; };
 		L20000020000000000000002 /* MarkdownDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocumentTests.swift; sourceTree = "<group>"; };
+		M20000010000000000000001 /* AccessPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessPolicy.swift; sourceTree = "<group>"; };
+		M20000020000000000000002 /* AccessPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessPolicyTests.swift; sourceTree = "<group>"; };
+		M20000030000000000000003 /* OpenURLServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenURLServiceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -298,6 +309,8 @@
 				K20000040000000000000004 /* CheckboxToggleTests.swift */,
 				L20000010000000000000001 /* RenderedPageTests.swift */,
 				L20000020000000000000002 /* MarkdownDocumentTests.swift */,
+				M20000020000000000000002 /* AccessPolicyTests.swift */,
+				M20000030000000000000003 /* OpenURLServiceTests.swift */,
 				A90000040000000000000004 /* Fixtures */,
 			);
 			path = mdqlTests;
@@ -349,6 +362,7 @@
 			children = (
 				H20000010000000000000001 /* OpenURLProtocol.swift */,
 				H20000020000000000000002 /* OpenURLService.swift */,
+				M20000010000000000000001 /* AccessPolicy.swift */,
 				H20000030000000000000003 /* OpenURLDelegate.swift */,
 				H20000040000000000000004 /* main.swift */,
 				H20000050000000000000005 /* Info.plist */,
@@ -575,6 +589,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				M10000010000000000000001 /* AccessPolicy.swift in Sources */,
 				A10000010000000000000001 /* AppDelegate.swift in Sources */,
 				J10000010000000000000001 /* MainMenu.swift in Sources */,
 				I10000040000000000000004 /* MarkdownDocument.swift in Sources */,
@@ -591,6 +606,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				M10000020000000000000002 /* AccessPolicy.swift in Sources */,
 				A10000020000000000000002 /* PreviewController.swift in Sources */,
 				I10000010000000000000001 /* MarkdownWebController.swift in Sources */,
 				A10000030000000000000003 /* MarkdownRenderer.swift in Sources */,
@@ -603,6 +619,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				M10000080000000000000008 /* OpenURLService.swift in Sources */,
+				M10000070000000000000007 /* OpenURLServiceTests.swift in Sources */,
+				M10000060000000000000006 /* AccessPolicyTests.swift in Sources */,
+				M10000030000000000000003 /* AccessPolicy.swift in Sources */,
 				A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */,
 				A1000000000000000000000C /* MarkdownRenderer.swift in Sources */,
 				A1000000000000000000000E /* PreviewController.swift in Sources */,
@@ -629,6 +649,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				M10000040000000000000004 /* AccessPolicy.swift in Sources */,
 				G10000010000000000000001 /* main.swift in Sources */,
 				G10000020000000000000002 /* MarkdownRenderer.swift in Sources */,
 			);
@@ -638,6 +659,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				M10000050000000000000005 /* AccessPolicy.swift in Sources */,
 				H10000010000000000000001 /* OpenURLProtocol.swift in Sources */,
 				H10000020000000000000002 /* OpenURLService.swift in Sources */,
 				H10000030000000000000003 /* OpenURLDelegate.swift in Sources */,

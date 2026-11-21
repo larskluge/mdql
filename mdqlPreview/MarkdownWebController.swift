@@ -9,6 +9,10 @@ import WebKit
 /// through XPC while the app reads directly.
 final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
 
+    /// Where every page this controller renders lives: `loadHTMLString` with
+    /// no base URL. Nothing else may load, and nothing else reaches the bridge.
+    private static let pageURL = URL(string: "about:blank")!
+
     let webView: WKWebView
     private var fileWatcher: FileWatcher?
     private(set) var fileURL: URL? {
@@ -18,6 +22,10 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         }
     }
     private var fileHistory: [URL] = []
+
+    /// The file the host opened, which `fileURL` leaves as links are
+    /// followed. Its folder bounds every file a link may open (`AccessPolicy`).
+    private(set) var documentURL: URL?
 
     /// Opens a URL externally (browser, Finder, etc.). Default is a no-op.
     var openURL: (URL) -> Void = { _ in }
@@ -46,6 +54,10 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     var appChrome: Bool = false
 
     private var isTornDown = false
+
+    /// `loadPage` calls whose navigation has not yet been let through: the
+    /// only navigations `decidePolicyFor` allows.
+    private var pageLoadsPending = 0
 
     override init() {
         let config = WKWebViewConfiguration()
@@ -89,15 +101,22 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         let title = url.deletingPathExtension().lastPathComponent
         let html = MarkdownRenderer.render(markdown: markdown, title: title, interactive: interactive, appChrome: appChrome)
         fileWatcher?.stop()
+        documentURL = url
         fileURL = url
         fileHistory.removeAll()
-        webView.loadHTMLString(html, baseURL: nil)
+        loadPage(html)
         startWatching(url)
     }
 
     /// Handles an openURL action. Exposed for testing.
     func handleOpenURL(_ urlString: String, background: Bool) {
         guard let url = URL(string: urlString), !urlString.isEmpty else { return }
+        do {
+            try AccessPolicy.checkOpening(url)
+        } catch {
+            AccessPolicy.log.error("Refused to open \(urlString, privacy: .public): \(String(describing: error), privacy: .public)")
+            return
+        }
         openURL(url)
     }
 
@@ -121,8 +140,13 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
               !decoded.isEmpty else { return }
 
         let resolved = URL(fileURLWithPath: decoded, relativeTo: currentURL.deletingLastPathComponent()).standardized
-        let ext = resolved.pathExtension.lowercased()
-        guard ext == "md" || ext == "markdown" else { return }
+        guard let documentURL else { return }
+        do {
+            _ = try AccessPolicy.file(resolved, previewing: documentURL)
+        } catch {
+            AccessPolicy.log.error("Refused to open \(resolved.path, privacy: .public) in the preview: \(String(describing: error), privacy: .public)")
+            return
+        }
 
         readFile(resolved) { [weak self] markdown in
             guard let self = self, let markdown = markdown else { return }
@@ -146,8 +170,15 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         fileURL = url
         let title = url.deletingPathExtension().lastPathComponent
         let html = MarkdownRenderer.render(markdown: markdown, title: title, showBackButton: !fileHistory.isEmpty, interactive: interactive, appChrome: appChrome)
-        webView.loadHTMLString(html, baseURL: nil)
+        loadPage(html)
         startWatching(url)
+    }
+
+    /// Every page goes in through here, so that `decidePolicyFor` can tell
+    /// mdql's own loads from a navigation the document asks for.
+    private func loadPage(_ html: String) {
+        pageLoadsPending += 1
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     private func startWatching(_ url: URL) {
@@ -172,6 +203,13 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     // MARK: - WKScriptMessageHandler
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        // Only mdql's own page speaks for the user: not a frame inside it,
+        // nor a page that replaced it.
+        guard message.frameInfo.isMainFrame, message.frameInfo.request.url == Self.pageURL else {
+            let frame = message.frameInfo.request.url?.absoluteString ?? "no URL"
+            AccessPolicy.log.error("Ignored a message from \(message.frameInfo.isMainFrame ? "main frame" : "subframe", privacy: .public) \(frame, privacy: .public), which is not mdql's page")
+            return
+        }
         guard let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
 
@@ -210,7 +248,16 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             decisionHandler(.cancel)
             return
         }
-        decisionHandler(.allow)
+        // mdql's own pages load; nothing a document asks for does — a meta
+        // refresh, a form, `window.open`, a subframe — wherever it points.
+        if pageLoadsPending > 0, navigationAction.targetFrame?.isMainFrame == true,
+           navigationAction.request.url == Self.pageURL {
+            pageLoadsPending -= 1
+            decisionHandler(.allow)
+            return
+        }
+        AccessPolicy.log.error("Cancelled a navigation to \(navigationAction.request.url?.absoluteString ?? "no URL", privacy: .public): only mdql's own page loads")
+        decisionHandler(.cancel)
     }
 }
 

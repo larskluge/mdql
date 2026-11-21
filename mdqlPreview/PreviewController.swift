@@ -2,6 +2,7 @@ import Cocoa
 import QuickLookUI
 import Quartz
 import WebKit
+import os
 
 class PreviewController: NSViewController, QLPreviewingController {
     let controller = MarkdownWebController()
@@ -50,16 +51,18 @@ class PreviewController: NSViewController, QLPreviewingController {
             proxy.open(url) { _ in }
         }
         controller.readFile = { [weak self] url, completion in
-            guard let proxy = self?.xpcProxy else { completion(nil); return }
-            proxy.readFile(at: url.path) { content, _ in
+            guard let document = self?.controller.documentURL,
+                  let proxy = self?.xpcProxy else { completion(nil); return }
+            proxy.readFile(at: url.path, previewing: document.path) { content, _ in
                 DispatchQueue.main.async { completion(content) }
             }
         }
         controller.interactive = true
         controller.toggleCheckbox = { [weak self] index, _, completion in
             guard let url = self?.controller.fileURL,
+                  let document = self?.controller.documentURL,
                   let proxy = self?.xpcProxy else { completion(false); return }
-            proxy.toggleCheckbox(at: url.path, index: index) { success in
+            proxy.toggleCheckbox(at: url.path, index: index, previewing: document.path) { success in
                 DispatchQueue.main.async { completion(success) }
             }
         }
@@ -91,6 +94,10 @@ class PreviewController: NSViewController, QLPreviewingController {
     }
 
     private var xpcProxy: OpenURLProtocol? {
-        xpcConnection?.remoteObjectProxyWithErrorHandler({ _ in }) as? OpenURLProtocol
+        xpcConnection?.remoteObjectProxyWithErrorHandler({ error in
+            Self.log.error("XPC call to the open-url service failed: \(error.localizedDescription, privacy: .public)")
+        }) as? OpenURLProtocol
     }
+
+    private static let log = Logger(subsystem: "com.mdql.app", category: "preview")
 }

@@ -219,6 +219,34 @@ final class MarkdownRendererTests: XCTestCase {
                       "Image src must escape ampersand; got: \(html)")
     }
 
+    // MARK: - Link and image schemes
+
+    func testLinksWithAnotherSchemeLoseTheirHref() {
+        for destination in ["file:///System/Applications/Calculator.app", "smb://server/share", "javascript:alert(1)",
+                            "JavaScript:alert(1)", "x-custom-app://do", "data:text/html,hi", "java&#9;script:alert(1)"] {
+            let html = MarkdownRenderer.renderBody(markdown: "[label](\(destination))")
+            XCTAssertFalse(html.contains("href"), "\(destination) must not reach the page; got: \(html)")
+            XCTAssertTrue(html.contains("label"), "The link text still shows; got: \(html)")
+        }
+    }
+
+    func testImagesWithAnotherSchemeLoseTheirSrc() {
+        for source in ["file:///Users/someone/photo.png", "smb://server/share/i.png", "x-custom-app://i.png"] {
+            let html = MarkdownRenderer.renderBody(markdown: "![alt](\(source))")
+            XCTAssertFalse(html.contains("src="), "\(source) must not reach the page; got: \(html)")
+        }
+    }
+
+    func testAllowedAndRelativeDestinationsAreKept() {
+        for destination in ["https://example.com/", "http://example.com/", "mailto:someone@example.com",
+                            "two.md", "../up/three.markdown", "sub/four.md#part", "#section", "?q=1", "/abs/five.md"] {
+            let html = MarkdownRenderer.renderBody(markdown: "[label](\(destination))")
+            XCTAssertTrue(html.contains("href=\"\(destination)\""), "\(destination) must be kept; got: \(html)")
+        }
+        let image = MarkdownRenderer.renderBody(markdown: "![alt](images/pic.png)")
+        XCTAssertTrue(image.contains("src=\"images/pic.png\""), "A relative image is kept; got: \(image)")
+    }
+
     func testIssue11Repro() throws {
         let url = fixtureURL("code-with-html")
         let md = try String(contentsOf: url, encoding: .utf8)

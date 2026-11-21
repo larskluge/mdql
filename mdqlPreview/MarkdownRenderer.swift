@@ -89,13 +89,13 @@ public struct MarkdownRenderer {
 
         mutating func visitLink(_ link: Link) -> Markup? {
             var link = link
-            link.destination = link.destination.map(MarkdownRenderer.escapeAttribute)
+            link.destination = link.destination.flatMap(MarkdownRenderer.allowedURL).map(MarkdownRenderer.escapeAttribute)
             return defaultVisit(link)
         }
 
         mutating func visitImage(_ image: Image) -> Markup? {
             var image = image
-            image.source = image.source.map(MarkdownRenderer.escapeAttribute)
+            image.source = image.source.flatMap(MarkdownRenderer.allowedURL).map(MarkdownRenderer.escapeAttribute)
             image.title = image.title.map(MarkdownRenderer.escapeAttribute)
             return defaultVisit(image)
         }
@@ -132,6 +132,29 @@ public struct MarkdownRenderer {
 
     static func filteringRawTextTags(_ html: String) -> String {
         rawTextTag.stringByReplacingMatches(in: html, range: NSRange(html.startIndex..., in: html), withTemplate: "&lt;")
+    }
+
+    // MARK: - URL schemes
+    // A link or image keeps its URL only when the URL is relative (a sibling
+    // `.md`, a `#fragment`) or names one of `AccessPolicy.allowedSchemes`.
+    // Any other — `file:`, `smb:`, an app's own scheme — is dropped, and the
+    // formatter writes the `<a>` without an href, the `<img>` without a src.
+
+    /// A scheme as a browser reads one: a letter, then letters, digits, `+`,
+    /// `-` or `.`, up to the first `:`.
+    private static let scheme = try! NSRegularExpression(pattern: "^([A-Za-z][A-Za-z0-9+.-]*):")
+
+    static func allowedURL(_ url: String) -> String? {
+        // A browser drops leading C0 controls and spaces, and every tab and
+        // newline, before it reads the scheme: `java\tscript:` is `javascript:`.
+        let read = String(String.UnicodeScalarView(url.unicodeScalars
+            .drop { $0.value <= 0x20 }
+            .filter { !["\t", "\n", "\r"].contains($0) }))
+        guard let match = scheme.firstMatch(in: read, range: NSRange(read.startIndex..., in: read)),
+              let range = Range(match.range(at: 1), in: read) else {
+            return url
+        }
+        return AccessPolicy.allowedSchemes.contains(read[range].lowercased()) ? url : nil
     }
 
     private static func escapeAttribute(_ s: String) -> String {

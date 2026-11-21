@@ -39,7 +39,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
             self?.synchronizeWindowTitleWithDocumentName()
         }
         controller.openURL = { url in
-            NSWorkspace.shared.open(url)
+            _ = AccessPolicy.open(url, with: { NSWorkspace.shared.open($0) })
         }
         controller.readFile = { url, completion in
             let content = try? String(contentsOf: url, encoding: .utf8)
