@@ -24,13 +24,7 @@ class PreviewController: NSViewController, QLPreviewingController {
     private var appearanceObserver: NSKeyValueObservation?
 
     deinit {
-        appearanceObserver?.invalidate()
         xpcConnection?.invalidate()
-    }
-
-    override func viewWillAppear() {
-        super.viewWillAppear()
-        updateAppearance()
     }
 
     override func loadView() {
@@ -38,11 +32,11 @@ class PreviewController: NSViewController, QLPreviewingController {
         self.view = controller.webView
         preferredContentSize = MarkdownRenderer.previewSize
 
-        // Prevent full-screen QuickLook windows (which adopt vibrantDark appearance)
-        // from forcing the web view into dark mode when system appearance is light.
-        updateAppearance()
-        appearanceObserver = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
-            self?.updateAppearance()
+        // Full-screen Quick Look hosts the preview in a vibrantDark window, which the
+        // web view would inherit: prefers-color-scheme: dark, even in Light Mode.
+        // Pin it to the system's appearance instead, and follow that as it changes.
+        appearanceObserver = NSApplication.shared.observe(\.effectiveAppearance, options: [.initial]) { [weak self] app, _ in
+            self?.view.appearance = app.effectiveAppearance
         }
 
         // Set up XPC connection to unsandboxed service (URL opening + file reading)
@@ -94,12 +88,6 @@ class PreviewController: NSViewController, QLPreviewingController {
     /// Handles an openMarkdown action. Exposed for testing.
     func handleOpenMarkdown(_ urlString: String) {
         controller.handleOpenMarkdown(urlString)
-    }
-
-    private func updateAppearance() {
-        if let appearance = NSApp?.effectiveAppearance ?? NSApplication.shared.effectiveAppearance as NSAppearance? {
-            view.appearance = appearance
-        }
     }
 
     private var xpcProxy: OpenURLProtocol? {

@@ -279,11 +279,31 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertFalse(version.isEmpty, "Version should never be empty")
     }
 
-    func testPreviewControllerSetsAppearanceFromSystem() {
+    /// Full-screen Quick Look puts the preview in a vibrantDark window; the web view
+    /// must render in the system's appearance, not inherit the window's.
+    func testPreviewIgnoresDarkFullScreenWindow() {
         let preview = PreviewController()
-        _ = preview.view
-        let expected = NSApp?.effectiveAppearance ?? NSApplication.shared.effectiveAppearance
-        XCTAssertEqual(preview.view.appearance?.name, expected.name,
-                       "PreviewController view appearance should match system effective appearance")
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: MarkdownRenderer.previewSize),
+                              styleMask: [.titled], backing: .buffered, defer: true)
+        window.appearance = NSAppearance(named: .vibrantDark)
+        window.contentView = preview.view
+        XCTAssertEqual(preview.view.effectiveAppearance.name, NSApplication.shared.effectiveAppearance.name,
+                       "The preview must not inherit the full-screen window's vibrantDark appearance")
+    }
+
+    func testPreviewFollowsSystemAppearanceChanges() {
+        let app = NSApplication.shared
+        let original = app.appearance
+        defer { app.appearance = original }
+        let preview = PreviewController()
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: MarkdownRenderer.previewSize),
+                              styleMask: [.titled], backing: .buffered, defer: true)
+        window.appearance = NSAppearance(named: .vibrantDark)
+        window.contentView = preview.view
+
+        app.appearance = NSAppearance(named: .aqua)
+        XCTAssertEqual(preview.view.effectiveAppearance.name, .aqua, "Light Mode must render light")
+        app.appearance = NSAppearance(named: .darkAqua)
+        XCTAssertEqual(preview.view.effectiveAppearance.name, .darkAqua, "Dark Mode must render dark")
     }
 }
