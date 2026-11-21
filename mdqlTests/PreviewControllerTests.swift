@@ -514,17 +514,32 @@ final class PreviewControllerTests: XCTestCase {
         return (controller, swapped)
     }
 
-    func testReloadContentFullyReloadsWhenFirstFenceAppears() throws {
-        // An innerHTML swap cannot bring in the runtime, so the first fence
-        // must take the full-reload path, which re-embeds it.
-        let (controller, swapped) = try reload(
-            from: "# Initial document without mermaid",
-            to: "# Updated\n\n```mermaid\nflowchart LR\n    A --> B\n```",
-            expecting: "Updated"
-        )
-        XCTAssertFalse(swapped, "Adding a mermaid fence must replace the page")
-        XCTAssertTrue(controller.hasLoadedMermaid,
-                      "The full reload must embed the runtime")
+    func testFirstFenceAddedLiveKeepsThePageWhereTheReaderWas() throws {
+        // The first fence added to a page without diagrams brings the runtime
+        // into the page as it is: no reload, so the reader stays where they
+        // were, and the diagram is drawn there.
+        let notes = "# Notes\n\n" + (1...80).map { "Paragraph \($0) of the notes." }.joined(separator: "\n\n")
+        let controller = MarkdownWebController()
+        controller.readFile = { url, completion in completion(MarkdownText.read(url)) }
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: tmpDir) }
+        let file = tmpDir.appendingPathComponent("doc.md")
+        try notes.write(to: file, atomically: true, encoding: .utf8)
+        try controller.loadMarkdownFile(at: file)
+        XCTAssertFalse(controller.hasLoadedMermaid)
+        pollJS(controller.webView, "document.readyState === 'complete' && (window.scrollTo(0, 600), window.__mdqlTestMarker = true, window.scrollY)", "Scrolled down") {
+            ($0 as? Double ?? 0) >= 600
+        }
+
+        try (notes + "\n\n```mermaid\nflowchart LR\n    A --> B\n```").write(to: file, atomically: true, encoding: .utf8)
+        controller.reloadContent()
+        pollJS(controller.webView, "[document.querySelectorAll('.markdown-body .mdql-mermaid svg').length, window.__mdqlTestMarker === true, window.scrollY]",
+               "Diagram drawn in the same page") { result in
+            guard let values = result as? [Any] else { return false }
+            return values[0] as? Int == 1 && values[1] as? Bool == true && (values[2] as? Double ?? 0) >= 600
+        }
+        XCTAssertTrue(controller.hasLoadedMermaid, "The page now loads the runtime")
     }
 
     func testReloadContentSwapsInPlaceWhenProseMentionsMermaidClass() throws {

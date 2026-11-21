@@ -378,10 +378,10 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             case .success(let text):
                 self.showEncoding(text.encoding)
                 let body = MarkdownRenderer.renderBodyNotingDiagrams(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
-                if body.hasMermaidFence && !self.hasLoadedMermaid && MermaidRuntime.runtimeFileURL != nil {
-                    self.showMarkdown(text, url: url)
-                    return
-                }
+                // The first fence in a page without diagrams brings the runtime
+                // into this page, which stays where the reader is.
+                let bringsRuntime = body.hasMermaidFence && !self.hasLoadedMermaid && MermaidRuntime.runtimeFileURL != nil
+                if bringsRuntime { self.hasLoadedMermaid = true }
                 let base64 = Data(body.html.utf8).base64EncodedString()
                 self.renderCount += 1
                 // On a page with diagrams, __mdqlSwapBody (MermaidRuntime.glue)
@@ -391,6 +391,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
                 // whatever fences are there when it starts.
                 self.webView.evaluateJavaScript(
                     "(function(h) { if (window.__mdqlSwapBody) { window.__mdqlSwapBody(h); return; } var a = document.querySelector('.markdown-body'); if (a) a.innerHTML = h; })(new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0))));"
+                        + (bringsRuntime ? MermaidRuntime.injectionJS : "")
                 ) { _, error in
                     if let error {
                         Self.log.error("A live update of \(url.lastPathComponent, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
