@@ -732,6 +732,40 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertFalse(body.contains("<h1>"), "Empty input should produce no headings")
     }
 
+    // MARK: - Scaling
+
+    /// Rendering takes time linear in the document (mdql-4hx). The rewriters
+    /// once rebuilt every ancestor of each node they visited: four times the
+    /// blocks took some fourteen times as long, and a 1 MB file 5 s; now four.
+    /// A ratio of timings, the fastest of three each, holds on a slow machine
+    /// as on a fast one.
+    func testRenderTimeGrowsLinearlyWithTheDocument() {
+        let block = """
+        ## A heading with <b>raw HTML</b>
+
+        A [link](https://example.com/?a=1&b=2), an ![image](pic.png "title") and <span>inline HTML</span>.
+
+        - [ ] a task
+        - [x] a done task
+
+        ```swift title=main
+        let x = 1
+        ```
+
+
+        """
+        func fastest(_ copies: Int) -> Double {
+            let markdown = String(repeating: block, count: copies)
+            return (0..<3).map { _ in
+                let start = DispatchTime.now().uptimeNanoseconds
+                _ = MarkdownRenderer.renderBody(markdown: markdown, interactive: true)
+                return Double(DispatchTime.now().uptimeNanoseconds - start)
+            }.min()!
+        }
+        let ratio = fastest(400) / fastest(100)
+        XCTAssertLessThan(ratio, 8, "Four times the document took \(ratio) times as long")
+    }
+
     // MARK: - UTF-8 handling (em-dashes, special chars)
 
     func testUTF8InRender() {

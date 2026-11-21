@@ -65,7 +65,7 @@ public struct MarkdownRenderer {
     ///
     /// The same walk notes whether a code block is a ```mermaid fence, so that
     /// what decides a page loads the runtime is the parse the formatter writes.
-    private struct TaskCheckboxes: MarkupRewriter {
+    private struct TaskCheckboxes: LinearRewriter {
         /// The whole markdown text, front matter included, which offsets count in.
         let source: [UInt8]
         /// The offset in `source` at which each line of the parsed body starts.
@@ -159,7 +159,7 @@ public struct MarkdownRenderer {
         return escaper.visit(markup) ?? markup
     }
 
-    private struct AttributeValueEscaper: MarkupRewriter {
+    private struct AttributeValueEscaper: LinearRewriter {
         typealias Result = Markup?
 
         /// Raw inline HTML in a heading is shown, not run. `## Using <Component>`
@@ -171,17 +171,17 @@ public struct MarkdownRenderer {
                 guard let inlineHTML = child as? InlineHTML else { return child }
                 return Text(inlineHTML.rawHTML)
             }
-            return defaultVisit(heading.withUncheckedChildren(children))
+            return defaultVisit(heading.detached.withUncheckedChildren(children))
         }
 
         mutating func visitLink(_ link: Link) -> Markup? {
-            var link = link
+            var link = link.detached
             link.destination = link.destination.flatMap(MarkdownRenderer.allowedURL).map(MarkdownRenderer.escapeAttribute)
             return defaultVisit(link)
         }
 
         mutating func visitImage(_ image: Image) -> Markup? {
-            var image = image
+            var image = image.detached
             image.source = image.source.flatMap(MarkdownRenderer.allowedURL).map(MarkdownRenderer.escapeAttribute)
             image.title = image.title.map(MarkdownRenderer.escapeAttribute)
             return defaultVisit(image)
@@ -190,7 +190,7 @@ public struct MarkdownRenderer {
         /// The class holds the info string's first word only, as in CommonMark's
         /// reference renderer: ```` ```swift title=main ```` is `language-swift`.
         mutating func visitCodeBlock(_ codeBlock: CodeBlock) -> Markup? {
-            var codeBlock = codeBlock
+            var codeBlock = codeBlock.detached
             codeBlock.language = codeBlock.language?
                 .split(whereSeparator: \.isWhitespace).first
                 .map { MarkdownRenderer.escapeAttribute(String($0)) }
@@ -198,13 +198,13 @@ public struct MarkdownRenderer {
         }
 
         mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> Markup? {
-            var inlineHTML = inlineHTML
+            var inlineHTML = inlineHTML.detached
             inlineHTML.rawHTML = MarkdownRenderer.filteringRawTextTags(inlineHTML.rawHTML)
             return inlineHTML
         }
 
         mutating func visitHTMLBlock(_ html: HTMLBlock) -> Markup? {
-            var html = html
+            var html = html.detached
             html.rawHTML = MarkdownRenderer.filteringRawTextTags(html.rawHTML)
             return html
         }
@@ -643,4 +643,37 @@ public struct MarkdownRenderer {
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
     }
+}
+
+// MARK: - Rewriting in linear time
+// swift-markdown's own `MarkupRewriter.defaultVisit` rebuilds each node with
+// `withUncheckedChildren` while it is still attached to its parent, and so do
+// the nodes' property setters. For an attached node that rebuilds every
+// ancestor up to the root, copying each one's children, so every node costs
+// as much as the document has top-level blocks: the two passes over a 1 MB
+// file took 5 s (mdql-4hx). A detached node rebuilds only itself, and the
+// rewriters keep only what a node holds, never where it hangs.
+
+/// A `MarkupRewriter` in time linear in the size of the tree: it rebuilds a
+/// node, detached from its parent, only when something under it changed.
+private protocol LinearRewriter: MarkupRewriter {}
+
+private extension LinearRewriter {
+    mutating func defaultVisit(_ markup: Markup) -> Markup? {
+        var changed = false
+        var children: [Markup] = []
+        children.reserveCapacity(markup.childCount)
+        for child in markup.children {
+            guard let new = visit(child) else { changed = true; continue }
+            changed = changed || !new.isIdentical(to: child)
+            children.append(new)
+        }
+        return changed ? markup.detached.withUncheckedChildren(children) : markup
+    }
+}
+
+private extension Markup {
+    /// This node as the root of a tree of its own, made in O(1): changing it
+    /// then rebuilds it alone, not its ancestors.
+    var detached: Self { detachedFromParent as! Self }
 }
