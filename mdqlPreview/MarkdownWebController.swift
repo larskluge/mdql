@@ -45,17 +45,30 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// own, so it stays false there.
     var appChrome: Bool = false
 
+    private var isTornDown = false
+
     override init() {
         let config = WKWebViewConfiguration()
         self.webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
         super.init()
-        config.userContentController.add(self, name: "mdql")
+        config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "mdql")
         webView.navigationDelegate = self
     }
 
-    deinit {
+    /// Stops file watching, halts web view loading, and releases the script message handler.
+    /// Final: a controller is not loaded again after it.
+    func teardown() {
+        guard !isTornDown else { return }
+        isTornDown = true
         fileWatcher?.stop()
+        fileWatcher = nil
+        webView.stopLoading()
+        webView.navigationDelegate = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "mdql")
+    }
+
+    deinit {
+        teardown()
     }
 
     // MARK: - Public API
@@ -192,5 +205,20 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             return
         }
         decisionHandler(.allow)
+    }
+}
+
+/// Trampoline that forwards `WKScriptMessageHandler` calls without retaining the delegate,
+/// breaking the circular retain cycle between `WKUserContentController` and `MarkdownWebController`.
+private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var delegate: WKScriptMessageHandler?
+
+    init(delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+        super.init()
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
     }
 }

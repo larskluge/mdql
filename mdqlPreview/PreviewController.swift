@@ -4,7 +4,7 @@ import Quartz
 import WebKit
 
 class PreviewController: NSViewController, QLPreviewingController {
-    private let controller = MarkdownWebController()
+    let controller = MarkdownWebController()
     private var xpcConnection: NSXPCConnection?
 
     /// Injectable URL opener. Default uses the XPC service to open in the default browser.

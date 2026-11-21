@@ -306,4 +306,40 @@ final class PreviewControllerTests: XCTestCase {
         app.appearance = NSAppearance(named: .darkAqua)
         XCTAssertEqual(preview.view.effectiveAppearance.name, .darkAqua, "Dark Mode must render dark")
     }
+
+    // MARK: - Lifecycle and deallocation
+
+    func testMarkdownWebControllerDeallocatesWithoutRetainCycle() {
+        weak var weakController: MarkdownWebController?
+        autoreleasepool {
+            let controller = MarkdownWebController()
+            weakController = controller
+            XCTAssertNotNil(weakController)
+        }
+        XCTAssertNil(weakController, "MarkdownWebController should deallocate without being retained by WKUserContentController")
+    }
+
+    func testPreviewControllerDeallocatesCleanly() {
+        weak var weakPreviewController: PreviewController?
+        weak var weakWebController: MarkdownWebController?
+        autoreleasepool {
+            let preview = PreviewController()
+            _ = preview.view
+            weakPreviewController = preview
+            weakWebController = preview.controller
+            XCTAssertNotNil(weakPreviewController)
+            XCTAssertNotNil(weakWebController)
+        }
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        XCTAssertNil(weakPreviewController, "PreviewController should deallocate")
+        XCTAssertNil(weakWebController, "MarkdownWebController should deallocate")
+    }
+
+    func testTeardownIsIdempotentAndClearsNavigationDelegate() {
+        let controller = MarkdownWebController()
+        XCTAssertNotNil(controller.webView.navigationDelegate)
+        controller.teardown()
+        controller.teardown()
+        XCTAssertNil(controller.webView.navigationDelegate)
+    }
 }
