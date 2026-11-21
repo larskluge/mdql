@@ -62,7 +62,7 @@ On file change, instead of reloading the entire page (which would flicker and re
 
 The page frame (CSS, `<head>`, etc.) stays loaded — only the content inside `<article class="markdown-body">` swaps.
 
-Mermaid diagrams survive the swap. In the same JavaScript task, `__mdqlSwapBody` first collects the rendered `.mdql-mermaid` wrappers (keyed by their fence source, skipping any drawn in a stale theme), then sets `innerHTML`, then moves each wrapper back in place of a fence with identical source. Only new or edited fences go through `mermaid.render`, so an edit elsewhere in the file — or a checkbox toggle — doesn't make diagrams flash. The first fence added to a diagram-free document still triggers a full page load, since the Mermaid runtime is only embedded when the document has a fence.
+Mermaid diagrams survive the swap. In the same JavaScript task, `__mdqlSwapBody` first collects the rendered `.mdql-mermaid` wrappers (keyed by their fence source, skipping any drawn in a stale theme), then sets `innerHTML`, then moves each wrapper back in place of a fence with identical source. Only new or edited fences go through `mermaid.render`, so an edit elsewhere in the file — or a checkbox toggle — doesn't make diagrams flash. The first fence added to a diagram-free document still triggers a full page load, since only a page with a fence loads the Mermaid runtime ([mermaid.md](mermaid.md)).
 
 The base64 + `TextDecoder` dance is necessary because JavaScript's `atob()` produces a Latin-1 string, not UTF-8. Multi-byte characters like em-dashes (`—`) would get mangled without it:
 ```javascript

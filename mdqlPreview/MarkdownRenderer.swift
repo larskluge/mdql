@@ -21,16 +21,32 @@ public struct MarkdownRenderer {
     /// titlebar reaches over the page.
     public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false,
                               checkboxesClickable: Bool = true, appChrome: Bool = false, topInset: CGFloat = 0) -> String {
-        wrapInHTMLDocument(body: renderBody(markdown: markdown, interactive: interactive && checkboxesClickable), title: title,
-                           showBackButton: showBackButton, interactive: interactive, appChrome: appChrome, topInset: topInset)
+        renderPage(markdown: markdown, title: title, showBackButton: showBackButton, interactive: interactive,
+                   checkboxesClickable: checkboxesClickable, appChrome: appChrome, topInset: topInset).html
+    }
+
+    /// The page, and whether it loads the Mermaid runtime: it does when the
+    /// parse found a ```mermaid fence and this build has the runtime.
+    static func renderPage(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false,
+                           checkboxesClickable: Bool = true, appChrome: Bool = false, topInset: CGFloat = 0) -> (html: String, loadsMermaid: Bool) {
+        let body = renderBodyNotingDiagrams(markdown: markdown, interactive: interactive && checkboxesClickable)
+        let loadsMermaid = body.hasMermaidFence && MermaidRuntime.runtimeFileURL != nil
+        let html = wrapInHTMLDocument(body: body.html, title: title, showBackButton: showBackButton, interactive: interactive,
+                                      appChrome: appChrome, topInset: topInset, loadsMermaid: loadsMermaid)
+        return (html, loadsMermaid)
     }
 
     public static func renderBody(markdown: String, interactive: Bool = false) -> String {
+        renderBodyNotingDiagrams(markdown: markdown, interactive: interactive).html
+    }
+
+    /// The body, and whether the parse found a ```mermaid fence in it.
+    static func renderBodyNotingDiagrams(markdown: String, interactive: Bool = false) -> (html: String, hasMermaidFence: Bool) {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         var checkboxes = TaskCheckboxes(markdown: markdown, body: body, interactive: interactive)
         let html = HTMLFormatter.format(escapingAttributeValues(checkboxes.visit(document) ?? document))
-        return renderFrontMatter(frontMatter) + html
+        return (renderFrontMatter(frontMatter) + html, checkboxes.hasMermaidFence)
     }
 
     // MARK: - Task Checkboxes
@@ -46,12 +62,16 @@ public struct MarkdownRenderer {
     /// it is disabled. Either way it shows that byte's state, so the state a
     /// click asks for is always the other one. An item whose marker is not where
     /// the parse puts it keeps the formatter's disabled checkbox.
+    ///
+    /// The same walk notes whether a code block is a ```mermaid fence, so that
+    /// what decides a page loads the runtime is the parse the formatter writes.
     private struct TaskCheckboxes: MarkupRewriter {
         /// The whole markdown text, front matter included, which offsets count in.
         let source: [UInt8]
         /// The offset in `source` at which each line of the parsed body starts.
         let lineStarts: [Int]
         let interactive: Bool
+        private(set) var hasMermaidFence = false
 
         init(markdown: String, body: String, interactive: Bool) {
             source = Array(markdown.utf8)
@@ -65,6 +85,11 @@ public struct MarkdownRenderer {
             }
             lineStarts = starts
             self.interactive = interactive
+        }
+
+        mutating func visitCodeBlock(_ codeBlock: CodeBlock) -> Markup? {
+            if MermaidRuntime.isDiagram(language: codeBlock.language) { hasMermaidFence = true }
+            return codeBlock
         }
 
         mutating func visitListItem(_ listItem: ListItem) -> Markup? {
@@ -295,7 +320,7 @@ public struct MarkdownRenderer {
     /// It is deliberately separate from `interactive` — QuickLook renders
     /// interactive too, but draws no chrome to make room for.
     ///
-    /// Nothing on the page waits for the body to parse as written. mdql's one
+    /// Nothing on the page waits for the body to parse as written. mdql's
     /// script sits in `<head>`, ahead of anything the document brings, and runs
     /// on DOMContentLoaded, which fires however the body ends — under an
     /// unclosed `<!--` too. The Content-Security-Policy lets only scripts
@@ -303,13 +328,16 @@ public struct MarkdownRenderer {
     /// `on…=` attributes and its `javascript:` links stay inert, on first load
     /// and on live reload alike. `evaluateJavaScript` from Swift is not subject
     /// to it. Images and styles load as they would without a policy.
+    ///
+    /// `loadsMermaid` adds the one other script, the Mermaid runtime, under the
+    /// same nonce and `async`, so the text does not wait on it (`MermaidRuntime`).
     private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false,
-                                           appChrome: Bool = false, topInset: CGFloat = 0) -> String {
+                                           appChrome: Bool = false, topInset: CGFloat = 0, loadsMermaid: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
         let nonce = makeNonce()
-        let mermaidScript = mermaidScriptTag(for: body, nonce: nonce)
+        let mermaidScript = loadsMermaid ? MermaidRuntime.scriptTag(nonce: nonce) : ""
         let backButtonHTML = showBackButton ? """
         <div id="mdql-back" class="mdql-glass"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
         """ : ""
@@ -353,130 +381,6 @@ public struct MarkdownRenderer {
             if (back) back.addEventListener('click', function() {
                 window.webkit.messageHandlers.mdql.postMessage({action: 'goBack'});
             });
-
-            // Mermaid diagrams: the runtime is only embedded when the document
-            // has a ```mermaid fence (see mermaidScriptTag(for:nonce:)). The hook is
-            // also re-invoked after live-update swaps (__mdqlSwapBody) —
-            // rendered blocks are marked with data-mdql-mermaid, so it is
-            // idempotent. seq lives at this scope so the initial render,
-            // live-update re-renders, and theme re-renders never reuse an SVG id.
-            var seq = 0;
-            // mermaidTheme is the theme mermaid is initialized with; themeGen
-            // bumps on every change so a render queued before the change can
-            // tell its SVG may be stale.
-            var mermaidTheme = null;
-            var themeGen = 0;
-            function initMermaid(dark) {
-                var theme = dark ? 'dark' : 'default';
-                if (theme === mermaidTheme) return;
-                mermaidTheme = theme;
-                themeGen++;
-                mermaid.initialize({
-                    startOnLoad: false,
-                    securityLevel: 'strict',
-                    suppressErrorRendering: true,
-                    theme: theme
-                });
-            }
-            // Brings mermaid in line with the page's current color scheme. The
-            // media query can flip before its change event fires, so swaps
-            // check it directly rather than waiting on the listener.
-            function syncMermaidTheme() {
-                initMermaid(window.matchMedia('(prefers-color-scheme: dark)').matches);
-            }
-            // Renders sourceText and swaps the result in for target (the raw
-            // <pre> on first render, the previous wrapper on theme change).
-            // The source and theme ride along on the wrapper so it can be
-            // re-rendered, and so a live-update swap only reuses wrappers
-            // drawn in the current theme. mermaid queues renders, so one
-            // requested before a theme change may run after it: re-render
-            // when the theme moved while this one was in flight.
-            function renderMermaid(target, sourceText) {
-                var gen = themeGen;
-                var theme = mermaidTheme;
-                return mermaid.render('mdql-mermaid-svg-' + (seq++), sourceText).then(function(result) {
-                    var div = document.createElement('div');
-                    div.className = 'mdql-mermaid';
-                    div.setAttribute('data-mdql-source', sourceText);
-                    div.setAttribute('data-mdql-theme', theme);
-                    div.innerHTML = typeof result === 'string' ? result : (result && result.svg || '');
-                    if (result && typeof result.bindFunctions === 'function') {
-                        result.bindFunctions(div);
-                    }
-                    target.replaceWith(div);
-                    if (gen !== themeGen && div.isConnected) {
-                        renderMermaid(div, sourceText).catch(function() {});
-                    }
-                });
-            }
-
-            // cache (optional) maps fence source to a queue of rendered
-            // wrappers from before a live-update swap; a fence whose source
-            // is unchanged takes its old wrapper back instead of re-rendering.
-            // Moving the node keeps its SVG ids and bindFunctions listeners.
-            window.__mdqlRenderDiagrams = function(cache) {
-                var blocks = document.querySelectorAll('.markdown-body pre code.language-mermaid');
-                if (!blocks.length || typeof mermaid === 'undefined') return;
-                syncMermaidTheme();
-                blocks.forEach(function(code) {
-                    var pre = code.parentElement;
-                    if (pre.getAttribute('data-mdql-mermaid')) return;
-                    // textContent is entity-decoded by the browser, so mermaid
-                    // gets the raw fence source.
-                    var sourceText = code.textContent;
-                    var reusable = cache && cache.get(sourceText);
-                    if (reusable && reusable.length) {
-                        pre.replaceWith(reusable.shift());
-                        return;
-                    }
-                    pre.setAttribute('data-mdql-mermaid', '1');
-                    renderMermaid(pre, sourceText).catch(function(err) {
-                        pre.classList.add('mdql-mermaid-error');
-                        var note = document.createElement('div');
-                        note.className = 'mdql-mermaid-error-msg';
-                        note.textContent = 'Diagram error: ' + (err && err.message || err);
-                        pre.after(note);
-                    });
-                });
-            };
-
-            // Live-update swap. Harvesting the rendered wrappers, replacing the
-            // body, and putting unchanged diagrams back all happen in this one
-            // task, so no frame shows raw fence source in between. Wrappers
-            // left in the cache are dropped; error blocks are never harvested,
-            // so a fixed fence re-renders.
-            window.__mdqlSwapBody = function(html) {
-                var article = document.querySelector('.markdown-body');
-                if (!article) return;
-                var cache = new Map();
-                if (typeof mermaid !== 'undefined') {
-                    syncMermaidTheme();
-                    article.querySelectorAll('.mdql-mermaid[data-mdql-source]').forEach(function(div) {
-                        if (div.getAttribute('data-mdql-theme') !== mermaidTheme) return;
-                        var sourceText = div.getAttribute('data-mdql-source');
-                        if (!cache.has(sourceText)) cache.set(sourceText, []);
-                        cache.get(sourceText).push(div);
-                    });
-                }
-                article.innerHTML = html;
-                window.__mdqlRenderDiagrams(cache);
-            };
-
-            if (!window.__mdqlMermaidThemeListener && window.matchMedia) {
-                window.__mdqlMermaidThemeListener = true;
-                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-                    if (typeof mermaid === 'undefined') return;
-                    initMermaid(e.matches);
-                    // A swap may already have synced the theme and rendered
-                    // some wrappers in it; only the stale ones need redrawing.
-                    document.querySelectorAll('.markdown-body .mdql-mermaid[data-mdql-source]').forEach(function(div) {
-                        var sourceText = div.getAttribute('data-mdql-source');
-                        if (!sourceText || div.getAttribute('data-mdql-theme') === mermaidTheme) return;
-                        renderMermaid(div, sourceText).catch(function() {});
-                    });
-                });
-            }
-            window.__mdqlRenderDiagrams();
 
             function svg(shapes) {
                 return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -702,36 +606,6 @@ public struct MarkdownRenderer {
         var generator = SystemRandomNumberGenerator()
         let bytes = (0..<16).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
         return Data(bytes).base64EncodedString()
-    }
-
-    /// mermaid.min.js, loaded once and made safe to embed inside a <script>
-    /// tag: `</script` inside JS string literals would close the tag early,
-    /// and `<\/script` is the identical string value inside those literals.
-    private static let mermaidRuntime: String? = {
-        guard let url = Bundle(for: BundleAnchor.self).url(forResource: "mermaid.min", withExtension: "js"),
-              let js = try? String(contentsOf: url, encoding: .utf8) else {
-            return nil
-        }
-        return js
-            .replacingOccurrences(of: "</script", with: "<\\/script", options: .caseInsensitive)
-            .replacingOccurrences(of: "<!--", with: "<\\!--")
-            .replacingOccurrences(of: "<![CDATA[", with: "<\\![CDATA[")
-    }()
-
-    /// True when `html` holds a rendered ```mermaid fence. Matches the exact
-    /// opening tag HTMLFormatter emits rather than the bare class name: text
-    /// content is escaped, so prose, inline code, or URLs that merely mention
-    /// `language-mermaid` never produce the literal tag.
-    internal static func containsMermaidFence(_ html: String) -> Bool {
-        html.contains("<code class=\"language-mermaid\">")
-    }
-
-    /// The Mermaid runtime is embedded only when the body has a mermaid fence —
-    /// diagram-free files must render exactly the HTML they always did. The
-    /// in-page `__mdqlRenderDiagrams` hook does the actual rendering.
-    internal static func mermaidScriptTag(for body: String, nonce: String) -> String {
-        guard containsMermaidFence(body), let js = mermaidRuntime else { return "" }
-        return "\n<script id=\"mdql-mermaid\" nonce=\"\(nonce)\">\n\(js)\n</script>\n"
     }
 
     private static func loadCSS() -> String {

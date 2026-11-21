@@ -174,13 +174,13 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// only navigations `decidePolicyFor` allows.
     private var pageLoadsPending = 0
 
-    /// Whether the current document HTML embedded the Mermaid runtime. The
-    /// runtime is inlined iff the body has a fence, so this mirrors
-    /// `MarkdownRenderer.mermaidScriptTag(for:nonce:)`.
+    /// Whether the page loads the Mermaid runtime (`MermaidRuntime`): what
+    /// `MarkdownRenderer.renderPage` said it embedded.
     private(set) var hasLoadedMermaid: Bool = false
 
     override init() {
         let config = WKWebViewConfiguration()
+        MermaidRuntime.install(on: config)
         self.webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
         super.init()
         config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "mdql")
@@ -334,11 +334,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         dismissNotice(id: Self.missingNoticeID)
         showEncoding(text.encoding)
         let title = url.deletingPathExtension().lastPathComponent
-        let html = MarkdownRenderer.render(markdown: text.string, title: title, showBackButton: !fileHistory.isEmpty,
-                                           interactive: interactive, checkboxesClickable: text.encoding == .utf8,
-                                           appChrome: appChrome, topInset: topInset)
-        hasLoadedMermaid = MarkdownRenderer.containsMermaidFence(html)
-        let navigation = loadPage(html)
+        let page = MarkdownRenderer.renderPage(markdown: text.string, title: title, showBackButton: !fileHistory.isEmpty,
+                                               interactive: interactive, checkboxesClickable: text.encoding == .utf8,
+                                               appChrome: appChrome, topInset: topInset)
+        hasLoadedMermaid = page.loadsMermaid
+        let navigation = loadPage(page.html)
         if let navigation, let anchor {
             pendingAnchor = (navigation, anchor)
         } else {
@@ -377,19 +377,18 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             switch result {
             case .success(let text):
                 self.showEncoding(text.encoding)
-                let bodyHTML = MarkdownRenderer.renderBody(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
-                let needsMermaid = MarkdownRenderer.containsMermaidFence(bodyHTML)
-                if needsMermaid && !self.hasLoadedMermaid {
+                let body = MarkdownRenderer.renderBodyNotingDiagrams(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
+                if body.hasMermaidFence && !self.hasLoadedMermaid && MermaidRuntime.runtimeFileURL != nil {
                     self.showMarkdown(text, url: url)
                     return
                 }
-                let base64 = Data(bodyHTML.utf8).base64EncodedString()
+                let base64 = Data(body.html.utf8).base64EncodedString()
                 self.renderCount += 1
-                // __mdqlSwapBody (see MarkdownRenderer) swaps the body and puts
-                // unchanged diagrams back without re-rendering them. A change can
-                // land after the article is parsed but before the init script
-                // defines the hook (e.g. while mermaid is still parsing); a plain
-                // swap then lets the init script render the new body.
+                // On a page with diagrams, __mdqlSwapBody (MermaidRuntime.glue)
+                // swaps the body and puts unchanged diagrams back without
+                // re-rendering them. Until the runtime has run, and on a page
+                // without diagrams, the body is swapped plainly; the runtime draws
+                // whatever fences are there when it starts.
                 self.webView.evaluateJavaScript(
                     "(function(h) { if (window.__mdqlSwapBody) { window.__mdqlSwapBody(h); return; } var a = document.querySelector('.markdown-body'); if (a) a.innerHTML = h; })(new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0))));"
                 ) { _, error in
