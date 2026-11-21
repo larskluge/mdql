@@ -24,6 +24,7 @@
 		A10000010000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* AppDelegate.swift */; };
 		A10000020000000000000002 /* PreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000002 /* PreviewController.swift */; };
 		A10000030000000000000003 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		Q10000000000000000000001 /* MermaidRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20000010000000000000001 /* MermaidRuntime.swift */; };
 		A10000040000000000000004 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
 		A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000050000000000000005 /* MarkdownRendererTests.swift */; };
 		A10000060000000000000006 /* mdqlPreview.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A30000020000000000000002 /* mdqlPreview.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -36,6 +37,7 @@
 		B10000110000000000000011 /* code-with-html.md in Resources */ = {isa = PBXBuildFile; fileRef = B20000110000000000000011 /* code-with-html.md */; };
 		A1000000000000000000000B /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A5000001000000000000000B /* Markdown */; };
 		A1000000000000000000000C /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		Q10000000000000000000002 /* MermaidRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20000010000000000000001 /* MermaidRuntime.swift */; };
 		A1000000000000000000000D /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
 		A1000000000000000000000E /* PreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000002 /* PreviewController.swift */; };
 		A1000000000000000000000F /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = A5000002000000000000000B /* Markdown */; };
@@ -47,7 +49,9 @@
 		E10000020000000000000002 /* PreviewControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000020000000000000002 /* PreviewControllerTests.swift */; };
 		G10000010000000000000001 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20000010000000000000001 /* main.swift */; };
 		G10000020000000000000002 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		Q10000000000000000000003 /* MermaidRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20000010000000000000001 /* MermaidRuntime.swift */; };
 		G10000030000000000000003 /* preview.css in CopyFiles */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
+		G10000060000000000000006 /* mermaid.min.js in CopyFiles */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
 		G10000040000000000000004 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = G70000010000000000000001 /* Markdown */; };
 		G10000050000000000000005 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
 		H10000010000000000000001 /* OpenURLProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20000010000000000000001 /* OpenURLProtocol.swift */; };
@@ -65,6 +69,7 @@
 		I1000000A000000000000000A /* DocumentWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000030000000000000003 /* DocumentWindowController.swift */; };
 		I1000000B000000000000000B /* DocumentWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = I20000040000000000000004 /* DocumentWindowControllerTests.swift */; };
 		I10000060000000000000006 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000030000000000000003 /* MarkdownRenderer.swift */; };
+		Q10000000000000000000004 /* MermaidRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20000010000000000000001 /* MermaidRuntime.swift */; };
 		I10000070000000000000007 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000010000000000000001 /* FileWatcher.swift */; };
 		I10000080000000000000008 /* preview.css in Resources */ = {isa = PBXBuildFile; fileRef = A20000040000000000000004 /* preview.css */; };
 		I10000090000000000000009 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D20000050000000000000005 /* WebKit.framework */; };
@@ -72,6 +77,9 @@
 		J10000010000000000000001 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
 		J10000020000000000000002 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000010000000000000001 /* MainMenu.swift */; };
 		J10000030000000000000003 /* MainMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20000020000000000000002 /* MainMenuTests.swift */; };
+		J10000050000000000000005 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
+		J10000060000000000000006 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = J20000040000000000000004 /* mermaid.min.js */; };
+		J10000070000000000000007 /* mermaid.md in Resources */ = {isa = PBXBuildFile; fileRef = J20000070000000000000007 /* mermaid.md */; };
 		K10000030000000000000003 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
 		K10000040000000000000004 /* CheckboxToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000020000000000000002 /* CheckboxToggle.swift */; };
 		K10000060000000000000006 /* CheckboxToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20000040000000000000004 /* CheckboxToggleTests.swift */; };
@@ -159,6 +167,7 @@
 			dstSubfolderSpec = 16;
 			files = (
 				G10000030000000000000003 /* preview.css in CopyFiles */,
+				G10000060000000000000006 /* mermaid.min.js in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -264,7 +273,10 @@
 		A20000010000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A20000020000000000000002 /* PreviewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewController.swift; sourceTree = "<group>"; };
 		A20000030000000000000003 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
+		Q20000010000000000000001 /* MermaidRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidRuntime.swift; sourceTree = "<group>"; };
 		A20000040000000000000004 /* preview.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = preview.css; sourceTree = "<group>"; };
+		J20000040000000000000004 /* mermaid.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = mermaid.min.js; sourceTree = "<group>"; };
+		J20000070000000000000007 /* mermaid.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = mermaid.md; sourceTree = "<group>"; };
 		A20000050000000000000005 /* MarkdownRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRendererTests.swift; sourceTree = "<group>"; };
 		A20000060000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000070000000000000007 /* basic.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = basic.md; sourceTree = "<group>"; };
@@ -378,6 +390,7 @@
 				A20000020000000000000002 /* PreviewController.swift */,
 				I20000010000000000000001 /* MarkdownWebController.swift */,
 				A20000030000000000000003 /* MarkdownRenderer.swift */,
+				Q20000010000000000000001 /* MermaidRuntime.swift */,
 				A90000050000000000000005 /* Resources */,
 				A20000060000000000000006 /* Info.plist */,
 				A2000000000000000000000D /* mdqlPreview.entitlements */,
@@ -412,6 +425,7 @@
 				A2000000000000000000000A /* special-chars.md */,
 				F20000010000000000000001 /* front-matter.md */,
 				B20000110000000000000011 /* code-with-html.md */,
+				J20000070000000000000007 /* mermaid.md */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -420,6 +434,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000040000000000000004 /* preview.css */,
+				J20000040000000000000004 /* mermaid.min.js */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -661,6 +676,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000040000000000000004 /* preview.css in Resources */,
+				J10000050000000000000005 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -675,6 +691,8 @@
 				F10000010000000000000001 /* front-matter.md in Resources */,
 				B10000110000000000000011 /* code-with-html.md in Resources */,
 				A1000000000000000000000D /* preview.css in Resources */,
+				J10000070000000000000007 /* mermaid.md in Resources */,
+				J10000060000000000000006 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -693,6 +711,7 @@
 				I10000050000000000000005 /* DocumentWindowController.swift in Sources */,
 				I10000020000000000000002 /* MarkdownWebController.swift in Sources */,
 				I10000060000000000000006 /* MarkdownRenderer.swift in Sources */,
+				Q10000000000000000000004 /* MermaidRuntime.swift in Sources */,
 				I10000070000000000000007 /* FileWatcher.swift in Sources */,
 				K10000030000000000000003 /* CheckboxToggle.swift in Sources */,
 			);
@@ -707,6 +726,7 @@
 				A10000020000000000000002 /* PreviewController.swift in Sources */,
 				I10000010000000000000001 /* MarkdownWebController.swift in Sources */,
 				A10000030000000000000003 /* MarkdownRenderer.swift in Sources */,
+				Q10000000000000000000001 /* MermaidRuntime.swift in Sources */,
 				D1000000000000000000000C /* FileWatcher.swift in Sources */,
 				H10000050000000000000005 /* OpenURLProtocol.swift in Sources */,
 				K10000090000000000000009 /* CheckboxToggle.swift in Sources */,
@@ -724,6 +744,7 @@
 				M10000030000000000000003 /* AccessPolicy.swift in Sources */,
 				A10000050000000000000005 /* MarkdownRendererTests.swift in Sources */,
 				A1000000000000000000000C /* MarkdownRenderer.swift in Sources */,
+				Q10000000000000000000002 /* MermaidRuntime.swift in Sources */,
 				A1000000000000000000000E /* PreviewController.swift in Sources */,
 				I10000030000000000000003 /* MarkdownWebController.swift in Sources */,
 				I1000000A000000000000000A /* DocumentWindowController.swift in Sources */,
@@ -750,6 +771,7 @@
 				M10000040000000000000004 /* AccessPolicy.swift in Sources */,
 				G10000010000000000000001 /* main.swift in Sources */,
 				G10000020000000000000002 /* MarkdownRenderer.swift in Sources */,
+				Q10000000000000000000003 /* MermaidRuntime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

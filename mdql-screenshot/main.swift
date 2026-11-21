@@ -31,6 +31,7 @@ class Screenshotter: NSObject, WKNavigationDelegate {
 
     init(outputPath: String, width: CGFloat, height: CGFloat) {
         let config = WKWebViewConfiguration()
+        MermaidRuntime.install(on: config)
         self.webView = WKWebView(
             frame: NSRect(x: 0, y: 0, width: width, height: height),
             configuration: config
@@ -46,6 +47,18 @@ class Screenshotter: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // The load event waits for the Mermaid runtime's script but not for the
+        // diagrams it draws: wait for those too, on a page that has any.
+        webView.callAsyncJavaScript("await window.__mdqlDiagramsSettled;", arguments: [:], in: nil, in: .page) { result in
+            if case .failure(let error) = result {
+                fputs("Waiting for diagrams failed: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+            self.snapshot(webView)
+        }
+    }
+
+    private func snapshot(_ webView: WKWebView) {
         let config = WKSnapshotConfiguration()
         config.rect = CGRect(x: 0, y: 0, width: webView.frame.width, height: webView.frame.height)
         webView.takeSnapshot(with: config) { image, error in

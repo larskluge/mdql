@@ -21,16 +21,32 @@ public struct MarkdownRenderer {
     /// titlebar reaches over the page.
     public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false,
                               checkboxesClickable: Bool = true, appChrome: Bool = false, topInset: CGFloat = 0) -> String {
-        wrapInHTMLDocument(body: renderBody(markdown: markdown, interactive: interactive && checkboxesClickable), title: title,
-                           showBackButton: showBackButton, interactive: interactive, appChrome: appChrome, topInset: topInset)
+        renderPage(markdown: markdown, title: title, showBackButton: showBackButton, interactive: interactive,
+                   checkboxesClickable: checkboxesClickable, appChrome: appChrome, topInset: topInset).html
+    }
+
+    /// The page, and whether it loads the Mermaid runtime: it does when the
+    /// parse found a ```mermaid fence and this build has the runtime.
+    static func renderPage(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false,
+                           checkboxesClickable: Bool = true, appChrome: Bool = false, topInset: CGFloat = 0) -> (html: String, loadsMermaid: Bool) {
+        let body = renderBodyNotingDiagrams(markdown: markdown, interactive: interactive && checkboxesClickable)
+        let loadsMermaid = body.hasMermaidFence && MermaidRuntime.runtimeFileURL != nil
+        let html = wrapInHTMLDocument(body: body.html, title: title, showBackButton: showBackButton, interactive: interactive,
+                                      appChrome: appChrome, topInset: topInset, loadsMermaid: loadsMermaid)
+        return (html, loadsMermaid)
     }
 
     public static func renderBody(markdown: String, interactive: Bool = false) -> String {
+        renderBodyNotingDiagrams(markdown: markdown, interactive: interactive).html
+    }
+
+    /// The body, and whether the parse found a ```mermaid fence in it.
+    static func renderBodyNotingDiagrams(markdown: String, interactive: Bool = false) -> (html: String, hasMermaidFence: Bool) {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
         var checkboxes = TaskCheckboxes(markdown: markdown, body: body, interactive: interactive)
         let html = HTMLFormatter.format(escapingAttributeValues(checkboxes.visit(document) ?? document))
-        return renderFrontMatter(frontMatter) + html
+        return (renderFrontMatter(frontMatter) + html, checkboxes.hasMermaidFence)
     }
 
     // MARK: - Task Checkboxes
@@ -46,12 +62,16 @@ public struct MarkdownRenderer {
     /// it is disabled. Either way it shows that byte's state, so the state a
     /// click asks for is always the other one. An item whose marker is not where
     /// the parse puts it keeps the formatter's disabled checkbox.
+    ///
+    /// The same walk notes whether a code block is a ```mermaid fence, so that
+    /// what decides a page loads the runtime is the parse the formatter writes.
     private struct TaskCheckboxes: MarkupRewriter {
         /// The whole markdown text, front matter included, which offsets count in.
         let source: [UInt8]
         /// The offset in `source` at which each line of the parsed body starts.
         let lineStarts: [Int]
         let interactive: Bool
+        private(set) var hasMermaidFence = false
 
         init(markdown: String, body: String, interactive: Bool) {
             source = Array(markdown.utf8)
@@ -65,6 +85,11 @@ public struct MarkdownRenderer {
             }
             lineStarts = starts
             self.interactive = interactive
+        }
+
+        mutating func visitCodeBlock(_ codeBlock: CodeBlock) -> Markup? {
+            if MermaidRuntime.isDiagram(language: codeBlock.language) { hasMermaidFence = true }
+            return codeBlock
         }
 
         mutating func visitListItem(_ listItem: ListItem) -> Markup? {
@@ -295,7 +320,7 @@ public struct MarkdownRenderer {
     /// It is deliberately separate from `interactive` — QuickLook renders
     /// interactive too, but draws no chrome to make room for.
     ///
-    /// Nothing on the page waits for the body to parse as written. mdql's one
+    /// Nothing on the page waits for the body to parse as written. mdql's
     /// script sits in `<head>`, ahead of anything the document brings, and runs
     /// on DOMContentLoaded, which fires however the body ends — under an
     /// unclosed `<!--` too. The Content-Security-Policy lets only scripts
@@ -303,12 +328,17 @@ public struct MarkdownRenderer {
     /// `on…=` attributes and its `javascript:` links stay inert, on first load
     /// and on live reload alike. `evaluateJavaScript` from Swift is not subject
     /// to it. Images and styles load as they would without a policy.
+    ///
+    /// `loadsMermaid` adds the one other script, the Mermaid runtime, under the
+    /// same nonce and `async`, so the text does not wait on it (`MermaidRuntime`).
     private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false,
-                                           appChrome: Bool = false, topInset: CGFloat = 0) -> String {
+                                           appChrome: Bool = false, topInset: CGFloat = 0, loadsMermaid: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
         let nonce = makeNonce()
+        // Empty on a plain page, which is then the page it always was, byte for byte.
+        let mermaidScript = loadsMermaid ? "\n" + MermaidRuntime.scriptTag(nonce: nonce) : ""
         let backButtonHTML = showBackButton ? """
         <div id="mdql-back" class="mdql-glass"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
         """ : ""
@@ -322,7 +352,7 @@ public struct MarkdownRenderer {
         <title>\(escapedTitle)</title>
         <style>
         \(css)
-        </style>
+        </style>\(mermaidScript)
         <script nonce="\(nonce)">
         document.addEventListener('DOMContentLoaded', function() {
         \(pageScript)

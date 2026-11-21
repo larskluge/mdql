@@ -1,5 +1,6 @@
 import XCTest
 import Markdown
+import WebKit
 
 /// The tags GFM's tagfilter escapes, plus `noscript` and `template`: each makes
 /// the browser read what follows as raw text or inert content, up to its end
@@ -159,6 +160,249 @@ final class MarkdownRendererTests: XCTestCase {
         """
         let html = MarkdownRenderer.render(markdown: md)
         XCTAssertTrue(html.contains("<pre><code class=\"language-swift\">"), "Should contain code block with language class")
+    }
+
+    // MARK: - Mermaid diagrams
+
+    func testMermaidFencePassesThroughAsCodeBlock() {
+        // The renderer does not transform mermaid fences: the runtime's glue
+        // (MermaidRuntime.glue) draws this markup in the page.
+        let md = """
+        ```mermaid
+        flowchart LR
+            A --> B
+        ```
+        """
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(body.contains("<pre><code class=\"language-mermaid\">"),
+                      "Mermaid fence must pass through as a language-mermaid code block")
+    }
+
+    /// The scripts a page carries, each one's text: what runs there.
+    private func scripts(in html: String) -> [String] {
+        html.components(separatedBy: "<script").dropFirst().map { $0.components(separatedBy: "</script>")[0] }
+    }
+
+    func testPlainPageCarriesNoMermaidCode() {
+        // A page without a diagram pays nothing for diagrams: its one script is
+        // mdql's own, and nothing in it is about Mermaid.
+        let html = MarkdownRenderer.render(markdown: "# Notes\n\nNo diagrams, a `code` span and\n\n```swift\nlet x = 1\n```", interactive: true)
+        let pageScripts = scripts(in: html)
+        XCTAssertEqual(pageScripts.count, 1, "A plain page must carry mdql's script and nothing else")
+        XCTAssertFalse(pageScripts[0].localizedCaseInsensitiveContains("mermaid"),
+                       "mdql's own script must carry no Mermaid code")
+    }
+
+    func testPlainPageCarriesNoMermaidCSS() {
+        // Nor its stylesheet: the diagram styles arrive with the runtime, so a
+        // plain page is the page it was before diagrams.
+        let html = MarkdownRenderer.render(markdown: "# Notes\n\nNo diagrams here.", interactive: true)
+        XCTAssertFalse(html.localizedCaseInsensitiveContains("mermaid"),
+                       "A plain page must carry no Mermaid styles, or anything else of Mermaid")
+    }
+
+    func testFenceWithMoreAfterTheLanguageLoadsTheRuntime() {
+        // The formatter writes the whole info string as the class, and
+        // `language-mermaid` is then one of its tokens: the page draws that
+        // fence, so it must load the runtime.
+        let html = MarkdownRenderer.render(markdown: "```mermaid demo\nflowchart LR\n    A --> B\n```")
+        XCTAssertTrue(html.contains("<script id=\"mdql-mermaid\""),
+                      "A fence whose info string starts with mermaid must load the runtime")
+    }
+
+    func testRawHTMLCodeBlockDoesNotLoadTheRuntime() {
+        // Only a fence the parse finds asks for diagrams; raw HTML that looks
+        // like the formatter's output does not.
+        let html = MarkdownRenderer.render(markdown: "<pre><code class=\"language-mermaid\">flowchart LR\n    A --> B</code></pre>")
+        XCTAssertFalse(html.contains("<script id=\"mdql-mermaid\""),
+                       "Raw HTML must not load the runtime")
+    }
+
+    func testMermaidPageLoadsTheRuntimeRatherThanCarryingIt() {
+        // The runtime is megabytes of script: the page names it, under its
+        // nonce, and loads it without holding back the text.
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertLessThan(html.utf8.count, 100_000, "The page must not carry the runtime itself")
+        let tag = html.components(separatedBy: "<script id=\"mdql-mermaid\"").dropFirst().first?.components(separatedBy: ">").first ?? ""
+        XCTAssertTrue(tag.contains(" async"), "The runtime must load async, after the text")
+        XCTAssertTrue(tag.contains(" src=\""), "The runtime must load from its own URL")
+        let csp = html.components(separatedBy: "'nonce-").dropFirst().first?.components(separatedBy: "'").first ?? "?"
+        XCTAssertTrue(tag.contains("nonce=\"\(csp)\""), "The runtime's script must carry the page's nonce")
+    }
+
+    func testMermaidRuntimeIncludedOnlyWhenFencePresent() {
+        let withFence = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertTrue(withFence.contains("<script id=\"mdql-mermaid\" nonce="),
+                      "A mermaid fence must pull in the vendored runtime")
+
+        let withoutFence = MarkdownRenderer.render(markdown: "```swift\nlet x = 42\n```")
+        XCTAssertFalse(withoutFence.contains("<script id=\"mdql-mermaid\" nonce="),
+                       "Diagram-free documents must not embed the runtime")
+    }
+
+    func testRenderBodyHasNoScriptTags() {
+        // renderBody is an innerHTML payload; the runtime only ever lives in
+        // the enclosing document produced by render().
+        let body = MarkdownRenderer.renderBody(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertFalse(body.contains("<script"),
+                       "renderBody must never emit script tags")
+    }
+
+    func testMermaidFixtureRenders() throws {
+        let url = fixtureURL("mermaid")
+        let html = try MarkdownRenderer.render(fileAt: url)
+        XCTAssertEqual(html.components(separatedBy: "<script id=\"mdql-mermaid\" nonce=").count - 1, 1,
+                       "The runtime must be embedded exactly once")
+        XCTAssertTrue(html.contains("language-mermaid"))
+        XCTAssertTrue(html.contains("language-swift"),
+                      "Non-mermaid code blocks in the fixture must be untouched")
+
+        let md = try String(contentsOf: url, encoding: .utf8)
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertFalse(body.contains("<script"),
+                       "renderBody must never emit script tags")
+    }
+
+    func testMermaidClassMentionIsNotAFence() {
+        // Inline code, prose, and URLs can contain the class name; only the
+        // formatter's fence tag should pull in the runtime.
+        let md = "See `language-mermaid`, language-mermaid, and <https://x.test/language-mermaid>."
+        let body = MarkdownRenderer.renderBody(markdown: md)
+        XCTAssertTrue(body.contains("language-mermaid"))
+        XCTAssertFalse(MarkdownRenderer.renderBodyNotingDiagrams(markdown: md).hasMermaidFence)
+        XCTAssertFalse(MarkdownRenderer.render(markdown: md).contains("<script id=\"mdql-mermaid\" nonce="),
+                       "A mention of the class name must not embed the runtime")
+    }
+
+    func testMermaidDiagramRendersAsSVGInWebView() {
+        let md = """
+        ```mermaid
+        flowchart LR
+            A --> B
+        ```
+        """
+        let html = MarkdownRenderer.render(markdown: md)
+        let expectation = expectation(description: "Mermaid renders as SVG in DOM")
+
+        let webView = mermaidWebView()
+        class NavDelegate: NSObject, WKNavigationDelegate {
+            let exp: XCTestExpectation
+            init(exp: XCTestExpectation) { self.exp = exp }
+            func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+                // Poll briefly for the async mermaid.render promise to resolve
+                func checkDOM(retries: Int) {
+                    webView.evaluateJavaScript("({ svgCount: document.querySelectorAll('.markdown-body .mdql-mermaid svg').length, hasObjectString: document.querySelector('.markdown-body').innerHTML.includes('[object Object]') })") { result, _ in
+                        guard let dict = result as? [String: Any],
+                              let svgCount = dict["svgCount"] as? Int,
+                              let hasObjectString = dict["hasObjectString"] as? Bool else {
+                            if retries > 0 {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { checkDOM(retries: retries - 1) }
+                            } else {
+                                XCTFail("Failed to query DOM from WKWebView")
+                                self.exp.fulfill()
+                            }
+                            return
+                        }
+                        if svgCount >= 1 {
+                            XCTAssertFalse(hasObjectString, "Mermaid diagram must not render as [object Object]")
+                            self.exp.fulfill()
+                        } else if retries > 0 {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { checkDOM(retries: retries - 1) }
+                        } else {
+                            XCTFail("Mermaid did not render SVG within timeout")
+                            self.exp.fulfill()
+                        }
+                    }
+                }
+                checkDOM(retries: 20)
+            }
+        }
+
+        let navDelegate = NavDelegate(exp: expectation)
+        webView.navigationDelegate = navDelegate
+        webView.loadHTMLString(html, baseURL: nil)
+
+        wait(for: [expectation], timeout: 5)
+    }
+
+    func testMermaidStylesArriveWithTheRuntime() {
+        // The diagram styles are not in preview.css: the runtime brings them.
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertFalse(html.contains(".mdql-mermaid"), "The page itself must not carry the diagram styles")
+        let webView = mermaidWebView()
+        let loaded = expectation(description: "Page loaded")
+        let delegate = LoadDelegate { loaded.fulfill() }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(html, baseURL: nil)
+        wait(for: [loaded], timeout: 5)
+        pollJS(webView, """
+            (function() {
+                var d = document.querySelector('.markdown-body .mdql-mermaid');
+                return d && d.querySelector('svg') ? getComputedStyle(d).textAlign : '';
+            })()
+            """, "Diagram styled") { $0 as? String == "center" }
+    }
+
+    func testMermaidDiagramReRendersOnThemeChange() {
+        // The theme listener runs outside the first render; a scoping slip
+        // there throws before mermaid.render and leaves stale colors.
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        let webView = mermaidWebView()
+        webView.appearance = NSAppearance(named: .aqua)
+        let loaded = expectation(description: "Page loaded")
+        let delegate = LoadDelegate { loaded.fulfill() }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(html, baseURL: nil)
+        wait(for: [loaded], timeout: 5)
+
+        let svgID = "(document.querySelector('.markdown-body .mdql-mermaid svg') || {}).id || ''"
+        var firstID = ""
+        pollJS(webView, svgID, "Initial SVG") { firstID = $0 as? String ?? ""; return !firstID.isEmpty }
+
+        webView.appearance = NSAppearance(named: .darkAqua)
+        pollJS(webView, "[\(svgID), window.matchMedia('(prefers-color-scheme: dark)').matches]", "Re-rendered SVG") { result in
+            guard let pair = result as? [Any], let id = pair.first as? String else { return false }
+            return pair.last as? Bool == true && !id.isEmpty && id != firstID
+        }
+    }
+
+    /// A web view that serves the Mermaid runtime, as MarkdownWebController's does.
+    private func mermaidWebView() -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        MermaidRuntime.install(on: configuration)
+        return WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
+    }
+
+    func testAppFindsTheRuntimeInTheExtensionItEmbeds() throws {
+        // The app ships no copy of mermaid.min.js: it reads the extension's.
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("mdql.app")
+        addTeardownBlock { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }
+        let resources = app.appendingPathComponent("Contents/PlugIns/mdqlPreview.appex/Contents/Resources")
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents/Resources"), withIntermediateDirectories: true)
+        try Data("<plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.example.app</string></dict></plist>".utf8)
+            .write(to: app.appendingPathComponent("Contents/Info.plist"))
+        let runtime = resources.appendingPathComponent("mermaid.min.js")
+        try Data("runtime".utf8).write(to: runtime)
+        let bundle = try XCTUnwrap(Bundle(url: app))
+        XCTAssertEqual(MermaidRuntime.locate(in: bundle)?.resolvingSymlinksInPath(), runtime.resolvingSymlinksInPath())
+
+        try FileManager.default.removeItem(at: runtime)
+        XCTAssertNil(MermaidRuntime.locate(in: try XCTUnwrap(Bundle(url: app))), "No runtime anywhere must be no runtime")
+    }
+
+    func testOnlyAMermaidInfoStringIsADiagram() {
+        XCTAssertTrue(MermaidRuntime.isDiagram(language: "mermaid"))
+        XCTAssertTrue(MermaidRuntime.isDiagram(language: "mermaid demo"))
+        XCTAssertFalse(MermaidRuntime.isDiagram(language: "Mermaid"))
+        XCTAssertFalse(MermaidRuntime.isDiagram(language: "mermaidx"))
+        XCTAssertFalse(MermaidRuntime.isDiagram(language: nil))
+    }
+
+    private final class LoadDelegate: NSObject, WKNavigationDelegate {
+        let onFinish: () -> Void
+        init(_ onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { onFinish() }
     }
 
     // MARK: - HTML Escaping (Issue #11)
@@ -629,5 +873,20 @@ final class MarkdownRendererTests: XCTestCase {
         let url = fixtureURL("special-chars")
         let html = try MarkdownRenderer.render(fileAt: url)
         XCTAssertTrue(html.contains("<title>special-chars</title>"), "Title should handle hyphens")
+    }
+}
+
+extension XCTestCase {
+    /// Evaluates `script` every 50ms until `done` accepts the result or 5s pass.
+    func pollJS(_ webView: WKWebView, _ script: String, _ label: String, done: @escaping (Any?) -> Bool) {
+        let exp = expectation(description: label)
+        func attempt(_ retries: Int) {
+            webView.evaluateJavaScript(script) { result, _ in
+                if done(result) { exp.fulfill() }
+                else if retries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { attempt(retries - 1) } }
+            }
+        }
+        attempt(100)
+        wait(for: [exp], timeout: 6)
     }
 }

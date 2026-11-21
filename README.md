@@ -11,6 +11,7 @@ A macOS Quick Look extension for previewing Markdown files. Press Space on any `
 - **Follow `.md` links** — click a relative `.md`/`.markdown` link to navigate to that file inside the same preview, with a back button, and a label at the bottom showing where each link goes
 - **Tick things off** — task-list checkboxes are clickable, and the change is written straight back into the file
 - **Nothing fails silently** — a tick that didn't save, a link that didn't open, a file moved away: a notice on top says what happened, and why
+- **Mermaid diagrams** — ` ```mermaid ` fences render as diagrams, offline (the [Mermaid](https://mermaid.js.org) runtime ships inside mdql) and in light or dark to match the system; [assets/mermaid-sample.md](assets/mermaid-sample.md) shows a few
 - **Standalone viewer** — `mdql.app` opens a `.md` file in its own window, rendered exactly as the preview renders it
 - **Light & dark mode** — automatically follows system appearance
 - **Inkpad-inspired styling** — clean typography with thoughtful spacing and color tokens. Big shout out to Mariusz and Matt for the epic work together on Inkpad nearly a decade ago

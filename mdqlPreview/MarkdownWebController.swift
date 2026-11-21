@@ -174,8 +174,13 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// only navigations `decidePolicyFor` allows.
     private var pageLoadsPending = 0
 
+    /// Whether the page loads the Mermaid runtime (`MermaidRuntime`): what
+    /// `MarkdownRenderer.renderPage` said it embedded.
+    private(set) var hasLoadedMermaid: Bool = false
+
     override init() {
         let config = WKWebViewConfiguration()
+        MermaidRuntime.install(on: config)
         self.webView = WKWebView(frame: NSRect(origin: .zero, size: MarkdownRenderer.previewSize), configuration: config)
         super.init()
         config.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "mdql")
@@ -329,10 +334,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         dismissNotice(id: Self.missingNoticeID)
         showEncoding(text.encoding)
         let title = url.deletingPathExtension().lastPathComponent
-        let html = MarkdownRenderer.render(markdown: text.string, title: title, showBackButton: !fileHistory.isEmpty,
-                                           interactive: interactive, checkboxesClickable: text.encoding == .utf8,
-                                           appChrome: appChrome, topInset: topInset)
-        let navigation = loadPage(html)
+        let page = MarkdownRenderer.renderPage(markdown: text.string, title: title, showBackButton: !fileHistory.isEmpty,
+                                               interactive: interactive, checkboxesClickable: text.encoding == .utf8,
+                                               appChrome: appChrome, topInset: topInset)
+        hasLoadedMermaid = page.loadsMermaid
+        let navigation = loadPage(page.html)
         if let navigation, let anchor {
             pendingAnchor = (navigation, anchor)
         } else {
@@ -363,18 +369,29 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         watcher.start()
     }
 
-    private func reloadContent() {
+    /// Re-renders the watched file after a change on disk. Exposed for testing.
+    func reloadContent() {
         guard let url = fileURL else { return }
         readFile(url) { [weak self] result in
             guard let self, self.fileURL == url else { return }
             switch result {
             case .success(let text):
                 self.showEncoding(text.encoding)
-                let bodyHTML = MarkdownRenderer.renderBody(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
-                let base64 = Data(bodyHTML.utf8).base64EncodedString()
+                let body = MarkdownRenderer.renderBodyNotingDiagrams(markdown: text.string, interactive: self.interactive && text.encoding == .utf8)
+                // The first fence in a page without diagrams brings the runtime
+                // into this page, which stays where the reader is.
+                let bringsRuntime = body.hasMermaidFence && !self.hasLoadedMermaid && MermaidRuntime.runtimeFileURL != nil
+                if bringsRuntime { self.hasLoadedMermaid = true }
+                let base64 = Data(body.html.utf8).base64EncodedString()
                 self.renderCount += 1
+                // On a page with diagrams, __mdqlSwapBody (MermaidRuntime.glue)
+                // swaps the body and puts unchanged diagrams back without
+                // re-rendering them. Until the runtime has run, and on a page
+                // without diagrams, the body is swapped plainly; the runtime draws
+                // whatever fences are there when it starts.
                 self.webView.evaluateJavaScript(
-                    "document.querySelector('.markdown-body').innerHTML = new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0)))"
+                    "(function(h) { if (window.__mdqlSwapBody) { window.__mdqlSwapBody(h); return; } var a = document.querySelector('.markdown-body'); if (a) a.innerHTML = h; })(new TextDecoder().decode(Uint8Array.from(atob('\(base64)'), c => c.charCodeAt(0))));"
+                        + (bringsRuntime ? MermaidRuntime.injectionJS : "")
                 ) { _, error in
                     if let error {
                         Self.log.error("A live update of \(url.lastPathComponent, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
