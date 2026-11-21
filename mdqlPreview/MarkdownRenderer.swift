@@ -337,7 +337,8 @@ public struct MarkdownRenderer {
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
         let nonce = makeNonce()
-        let mermaidScript = loadsMermaid ? MermaidRuntime.scriptTag(nonce: nonce) : ""
+        // Empty on a plain page, which is then the page it always was, byte for byte.
+        let mermaidScript = loadsMermaid ? "\n" + MermaidRuntime.scriptTag(nonce: nonce) : ""
         let backButtonHTML = showBackButton ? """
         <div id="mdql-back" class="mdql-glass"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
         """ : ""
@@ -351,8 +352,7 @@ public struct MarkdownRenderer {
         <title>\(escapedTitle)</title>
         <style>
         \(css)
-        </style>
-        \(mermaidScript)
+        </style>\(mermaidScript)
         <script nonce="\(nonce)">
         document.addEventListener('DOMContentLoaded', function() {
         \(pageScript)

@@ -193,6 +193,14 @@ final class MarkdownRendererTests: XCTestCase {
                        "mdql's own script must carry no Mermaid code")
     }
 
+    func testPlainPageCarriesNoMermaidCSS() {
+        // Nor its stylesheet: the diagram styles arrive with the runtime, so a
+        // plain page is the page it was before diagrams.
+        let html = MarkdownRenderer.render(markdown: "# Notes\n\nNo diagrams here.", interactive: true)
+        XCTAssertFalse(html.localizedCaseInsensitiveContains("mermaid"),
+                       "A plain page must carry no Mermaid styles, or anything else of Mermaid")
+    }
+
     func testFenceWithMoreAfterTheLanguageLoadsTheRuntime() {
         // The formatter writes the whole info string as the class, and
         // `language-mermaid` is then one of its tokens: the page draws that
@@ -315,6 +323,24 @@ final class MarkdownRendererTests: XCTestCase {
         webView.loadHTMLString(html, baseURL: nil)
 
         wait(for: [expectation], timeout: 5)
+    }
+
+    func testMermaidStylesArriveWithTheRuntime() {
+        // The diagram styles are not in preview.css: the runtime brings them.
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
+        XCTAssertFalse(html.contains(".mdql-mermaid"), "The page itself must not carry the diagram styles")
+        let webView = mermaidWebView()
+        let loaded = expectation(description: "Page loaded")
+        let delegate = LoadDelegate { loaded.fulfill() }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(html, baseURL: nil)
+        wait(for: [loaded], timeout: 5)
+        pollJS(webView, """
+            (function() {
+                var d = document.querySelector('.markdown-body .mdql-mermaid');
+                return d && d.querySelector('svg') ? getComputedStyle(d).textAlign : '';
+            })()
+            """, "Diagram styled") { $0 as? String == "center" }
     }
 
     func testMermaidDiagramReRendersOnThemeChange() {

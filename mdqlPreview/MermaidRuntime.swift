@@ -226,7 +226,24 @@ enum MermaidRuntime {
                 renderDiagrams(cache);
             }
 
+            // The diagram styles come with the runtime, so a page without a
+            // diagram carries none of them.
+            var styles = `
+                .mdql-mermaid { margin: 0 0 1em; text-align: center; overflow-x: auto; }
+                .mdql-mermaid svg { max-width: 100%; height: auto; }
+                /* A fence that failed to render keeps its source, a diagram whose
+                   redraw failed its old drawing; mark either and say why. */
+                .mdql-mermaid-error { border: 1px solid #c0392b; }
+                .mdql-mermaid-error-msg {
+                    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+                    font-size: 0.8em; color: #c0392b; margin: -0.5em 0 1em;
+                }`;
+
             function start() {
+                var style = document.createElement('style');
+                style.id = 'mdql-mermaid-style';
+                style.textContent = styles;
+                document.head.appendChild(style);
                 window.__mdqlSwapBody = swapBody;
                 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
                     initMermaid(e.matches);
