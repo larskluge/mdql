@@ -21,14 +21,29 @@ class PreviewController: NSViewController, QLPreviewingController {
     /// Always false here — QuickLook draws no chrome. Exposed for testing.
     var appChrome: Bool { controller.appChrome }
 
+    private var appearanceObserver: NSKeyValueObservation?
+
     deinit {
+        appearanceObserver?.invalidate()
         xpcConnection?.invalidate()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        updateAppearance()
     }
 
     override func loadView() {
         controller.webView.autoresizingMask = [.width, .height]
         self.view = controller.webView
         preferredContentSize = MarkdownRenderer.previewSize
+
+        // Prevent full-screen QuickLook windows (which adopt vibrantDark appearance)
+        // from forcing the web view into dark mode when system appearance is light.
+        updateAppearance()
+        appearanceObserver = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            self?.updateAppearance()
+        }
 
         // Set up XPC connection to unsandboxed service (URL opening + file reading)
         let connection = NSXPCConnection(serviceName: "com.mdql.app.open-url")
@@ -79,6 +94,12 @@ class PreviewController: NSViewController, QLPreviewingController {
     /// Handles an openMarkdown action. Exposed for testing.
     func handleOpenMarkdown(_ urlString: String) {
         controller.handleOpenMarkdown(urlString)
+    }
+
+    private func updateAppearance() {
+        if let appearance = NSApp?.effectiveAppearance ?? NSApplication.shared.effectiveAppearance as NSAppearance? {
+            view.appearance = appearance
+        }
     }
 
     private var xpcProxy: OpenURLProtocol? {
