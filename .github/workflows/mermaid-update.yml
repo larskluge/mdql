@@ -1,0 +1,139 @@
+name: Mermaid update
+
+# Weekly, and by hand: when npm's latest Mermaid is newer than scripts/mermaid.pin,
+# install it with scripts/fetch-mermaid.sh (which checks the registry's integrity)
+# on the branch `mermaid-update`, and open one pull request for it, or refresh the
+# one already open. A major release gets a pull request too, titled as one.
+#
+# A pull request opened with GITHUB_TOKEN starts no pull_request workflows, so
+# ci.yml would never run on it. This dispatches ci.yml on the branch instead: a
+# workflow_dispatch is the one event GITHUB_TOKEN may start a run with, and the
+# run shows among the pull request's checks (docs/learnings.md).
+#
+# Opening the pull request needs the repository setting "Allow GitHub Actions to
+# create and approve pull requests" (Settings → Actions → General).
+
+on:
+  schedule:
+    # Mondays 19:23 UTC, 02:23 on u26: the dispatched ci.yml boots its Tart VM at
+    # night, as owl's runs do.
+    - cron: '23 19 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write       # push the branch
+  pull-requests: write  # open, retitle or close the pull request
+  actions: write        # dispatch ci.yml
+
+concurrency:
+  group: mermaid-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # The bump is made on top of main; a dispatch from another branch does nothing.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BRANCH: mermaid-update
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare the pin with npm's latest release
+        id: compare
+        run: |
+          set -euo pipefail
+          # shellcheck source=/dev/null
+          source scripts/mermaid.pin
+          latest="$(curl -fsSL https://registry.npmjs.org/mermaid/latest \
+            | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          python3 -I - "$MERMAID_VERSION" "$latest" >> "$GITHUB_OUTPUT" <<'PY'
+          import re, sys
+          pinned, latest = sys.argv[1], sys.argv[2]
+          key = lambda v: tuple(int(n) for n in re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v).groups())
+          print(f"pinned={pinned}")
+          print(f"latest={latest}")
+          print(f"newer={'true' if key(latest) > key(pinned) else 'false'}")
+          print(f"major={'true' if key(latest)[0] > key(pinned)[0] else 'false'}")
+          PY
+          echo "pinned $MERMAID_VERSION, npm's latest $latest"
+
+      - name: Close a bump pull request main has overtaken
+        if: steps.compare.outputs.newer != 'true'
+        env:
+          PINNED: ${{ steps.compare.outputs.pinned }}
+        run: |
+          set -euo pipefail
+          number="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr close "$number" --delete-branch \
+              --comment "main already pins Mermaid $PINNED, npm's latest release."
+          fi
+
+      - name: Install the release on the branch
+        id: branch
+        if: steps.compare.outputs.newer == 'true'
+        env:
+          LATEST: ${{ steps.compare.outputs.latest }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          MAJOR: ${{ steps.compare.outputs.major }}
+        run: |
+          set -euo pipefail
+          # The branch already holds this release on top of today's main: nothing
+          # to push, and no second CI run for it.
+          if git fetch --quiet origin "$BRANCH" 2>/dev/null \
+            && git merge-base --is-ancestor origin/main FETCH_HEAD \
+            && git show FETCH_HEAD:scripts/mermaid.pin | grep -qx "MERMAID_VERSION=$LATEST"; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git switch --create "$BRANCH"
+          scripts/fetch-mermaid.sh "$LATEST"
+          if [ "$MAJOR" = true ]; then
+            title="fix: Mermaid $LATEST (major: $PINNED → $LATEST)"
+          else
+            title="fix: Mermaid $LATEST ($PINNED → $LATEST)"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mdqlPreview/Resources/mermaid.min.js scripts/mermaid.pin
+          git commit --quiet --message "$title" \
+            --message "Installed by .github/workflows/mermaid-update.yml with scripts/fetch-mermaid.sh $LATEST, from the npm registry tarball checked against the registry's integrity."
+          git push --force origin "$BRANCH"
+          {
+            echo "pushed=true"
+            echo "title=$title"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or refresh the pull request
+        if: steps.branch.outputs.pushed == 'true'
+        env:
+          TITLE: ${{ steps.branch.outputs.title }}
+          LATEST: ${{ steps.compare.outputs.latest }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+          MAJOR: ${{ steps.compare.outputs.major }}
+        run: |
+          set -euo pipefail
+          body="Mermaid $PINNED → $LATEST: [release notes](https://github.com/mermaid-js/mermaid/releases/tag/mermaid%40$LATEST).
+
+          scripts/fetch-mermaid.sh installed it from the npm registry tarball, checked against the sha512 the registry publishes, and pinned its sha256 in scripts/mermaid.pin. ci.yml is dispatched on this branch: its run is this pull request's CI."
+          if [ "$MAJOR" = true ]; then
+            body="$body
+
+          **A major release.** Read its breaking changes before merging: mdql calls \`mermaid.initialize\` and \`mermaid.render\` (mdqlPreview/MermaidRuntime.swift)."
+          fi
+          number="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$TITLE" --body "$body"
+          elif ! gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body"; then
+            echo "::error::Could not open the pull request. If GitHub said Actions may not create pull requests, turn on Settings → Actions → General → \"Allow GitHub Actions to create and approve pull requests\"."
+            exit 1
+          fi
+
+      - name: Run CI on the branch
+        if: steps.branch.outputs.pushed == 'true'
+        run: gh workflow run ci.yml --ref "$BRANCH"
