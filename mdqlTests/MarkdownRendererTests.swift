@@ -180,11 +180,11 @@ final class MarkdownRendererTests: XCTestCase {
 
     func testMermaidRuntimeIncludedOnlyWhenFencePresent() {
         let withFence = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
-        XCTAssertTrue(withFence.contains("<script id=\"mdql-mermaid\">"),
+        XCTAssertTrue(withFence.contains("<script id=\"mdql-mermaid\" nonce="),
                       "A mermaid fence must pull in the vendored runtime")
 
         let withoutFence = MarkdownRenderer.render(markdown: "```swift\nlet x = 42\n```")
-        XCTAssertFalse(withoutFence.contains("<script id=\"mdql-mermaid\">"),
+        XCTAssertFalse(withoutFence.contains("<script id=\"mdql-mermaid\" nonce="),
                        "Diagram-free documents must not embed the runtime")
     }
 
@@ -224,7 +224,7 @@ final class MarkdownRendererTests: XCTestCase {
     func testMermaidFixtureRenders() throws {
         let url = fixtureURL("mermaid")
         let html = try MarkdownRenderer.render(fileAt: url)
-        XCTAssertEqual(html.components(separatedBy: "<script id=\"mdql-mermaid\">").count - 1, 1,
+        XCTAssertEqual(html.components(separatedBy: "<script id=\"mdql-mermaid\" nonce=").count - 1, 1,
                        "The runtime must be embedded exactly once")
         XCTAssertTrue(html.contains("language-mermaid"))
         XCTAssertTrue(html.contains("language-swift"),
@@ -243,7 +243,7 @@ final class MarkdownRendererTests: XCTestCase {
         let body = MarkdownRenderer.renderBody(markdown: md)
         XCTAssertTrue(body.contains("language-mermaid"))
         XCTAssertFalse(MarkdownRenderer.containsMermaidFence(body))
-        XCTAssertFalse(MarkdownRenderer.render(markdown: md).contains("<script id=\"mdql-mermaid\">"),
+        XCTAssertFalse(MarkdownRenderer.render(markdown: md).contains("<script id=\"mdql-mermaid\" nonce="),
                        "A mention of the class name must not embed the runtime")
     }
 
