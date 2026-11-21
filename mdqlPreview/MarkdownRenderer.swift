@@ -137,14 +137,15 @@ public struct MarkdownRenderer {
 
     // MARK: - HTML Escaping
     // HTMLFormatter escapes text, code blocks and inline code itself. It still
-    // writes `Link.destination`, `Image.source` and `Image.title` raw into
-    // `href="…"` / `src="…"` / `title="…"`, and raw HTML verbatim, so we
-    // escape those on the tree before it formats. See
+    // writes `Link.destination`, `Image.source`, `Image.title` and
+    // `CodeBlock.language` (a fence's whole info string) raw into `href="…"` /
+    // `src="…"` / `title="…"` / `class="language-…"`, and raw HTML verbatim,
+    // so we escape those on the tree before it formats. See
     // docs/specs/2026-04-17-html-escaping-fix-design.md.
 
-    /// Escapes the URLs and titles that `HTMLFormatter` drops straight into
-    /// attribute values, before it does so, and runs the tagfilter over the raw
-    /// HTML it would emit verbatim.
+    /// Escapes the URLs, titles and code-block languages that `HTMLFormatter`
+    /// drops straight into attribute values, before it does so, and runs the
+    /// tagfilter over the raw HTML it would emit verbatim.
     ///
     /// Repairing the formatter's output with a regex cannot work here: once a
     /// destination containing `"` has been written out, the quote has already
@@ -184,6 +185,16 @@ public struct MarkdownRenderer {
             image.source = image.source.flatMap(MarkdownRenderer.allowedURL).map(MarkdownRenderer.escapeAttribute)
             image.title = image.title.map(MarkdownRenderer.escapeAttribute)
             return defaultVisit(image)
+        }
+
+        /// The class holds the info string's first word only, as in CommonMark's
+        /// reference renderer: ```` ```swift title=main ```` is `language-swift`.
+        mutating func visitCodeBlock(_ codeBlock: CodeBlock) -> Markup? {
+            var codeBlock = codeBlock
+            codeBlock.language = codeBlock.language?
+                .split(whereSeparator: \.isWhitespace).first
+                .map { MarkdownRenderer.escapeAttribute(String($0)) }
+            return codeBlock
         }
 
         mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> Markup? {

@@ -202,9 +202,9 @@ final class MarkdownRendererTests: XCTestCase {
     }
 
     func testFenceWithMoreAfterTheLanguageLoadsTheRuntime() {
-        // The formatter writes the whole info string as the class, and
-        // `language-mermaid` is then one of its tokens: the page draws that
-        // fence, so it must load the runtime.
+        // Only the info string's first word reaches the class, which is then
+        // `language-mermaid`: the page draws that fence, so it must load the
+        // runtime.
         let html = MarkdownRenderer.render(markdown: "```mermaid demo\nflowchart LR\n    A --> B\n```")
         XCTAssertTrue(html.contains("<script id=\"mdql-mermaid\""),
                       "A fence whose info string starts with mermaid must load the runtime")
@@ -467,6 +467,36 @@ final class MarkdownRendererTests: XCTestCase {
         let html = MarkdownRenderer.renderBody(markdown: "![x](https://a.com/i.png?w=1&h=2)")
         XCTAssertTrue(html.contains("src=\"https://a.com/i.png?w=1&amp;h=2\""),
                       "Image src must escape ampersand; got: \(html)")
+    }
+
+    func testFenceInfoStringCannotBreakOutOfTheClassAttribute() {
+        // The formatter writes a fence's language into class="language-…" raw,
+        // so a quote in it closes the attribute and the rest becomes another.
+        let html = MarkdownRenderer.renderBody(markdown: "```x\"onmouseover=\"alert(1)\ncode\n```")
+        XCTAssertTrue(html.contains("<pre><code class=\"language-x&quot;onmouseover=&quot;alert(1)\">"),
+                      "Quotes in the fence's language must be escaped; got: \(html)")
+
+        let spaced = MarkdownRenderer.renderBody(markdown: "```x\" onmouseover=\"alert(1)\ncode\n```")
+        XCTAssertTrue(spaced.contains("<pre><code class=\"language-x&quot;\">"),
+                      "Only the escaped first word may reach the class; got: \(spaced)")
+    }
+
+    func testFenceInfoStringEscapesAngleBracketsAndAmpersands() {
+        let html = MarkdownRenderer.renderBody(markdown: "```a<b>&c\ncode\n```")
+        XCTAssertTrue(html.contains("<pre><code class=\"language-a&lt;b>&amp;c\">"),
+                      "< and & in the fence's language must be escaped; got: \(html)")
+    }
+
+    func testFenceInfoStringKeepsOnlyItsFirstWord() {
+        let html = MarkdownRenderer.renderBody(markdown: "```swift title=main\nlet x = 1\n```")
+        XCTAssertTrue(html.contains("<pre><code class=\"language-swift\">"),
+                      "The class must hold only the info string's first word; got: \(html)")
+    }
+
+    func testFenceWithOnlyWhitespaceAfterTheBackticksHasNoClass() {
+        let html = MarkdownRenderer.renderBody(markdown: "```   \ncode\n```")
+        XCTAssertTrue(html.contains("<pre><code>code"),
+                      "A fence without a language must render no class; got: \(html)")
     }
 
     // MARK: - Link and image schemes
