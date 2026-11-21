@@ -1,5 +1,5 @@
 # The vendored Mermaid runtime, mdqlPreview/Resources/mermaid.min.js: its npm
 # release and the file's sha256. Written by scripts/fetch-mermaid.sh, and
 # checked against the file by scripts/test_fetch_mermaid.py (make version-test).
-MERMAID_VERSION=11.12.2
-MERMAID_SHA256=d0830a6c05546e9edb8fe20a8f545f3e0dc7c4c3134d584bad9c13a99d7a71e0
+MERMAID_VERSION=11.17.2
+MERMAID_SHA256=581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8
