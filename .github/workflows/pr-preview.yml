@@ -10,7 +10,13 @@ permissions:
 
 jobs:
   quicklook-preview:
-    runs-on: macos-latest
+    # Same-repo branches only: the job checks out head_ref from this repository,
+    # pushes to it and comments, none of which a fork's PR can do (its branch is not
+    # here and its token is read-only). Skipping forks is routing, not a guard — a
+    # fork's copy of this file can drop the `if:`; see ci.yml on the approval click.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macOS, arm64, tart]
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v5
@@ -43,12 +49,14 @@ jobs:
           git push
 
       - name: Comment on PR with screenshot
+        # Through env, not interpolated into the script: a branch name is chosen by
+        # whoever opens the pull request, and `${{ }}` pastes it into bash verbatim.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          BRANCH="${{ github.head_ref }}"
-          REPO="${{ github.repository }}"
-          PR_NUMBER="${{ github.event.pull_request.number }}"
           IMAGE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/assets/screenshots/pr-preview.png?$(date +%s)"
           gh pr comment "$PR_NUMBER" --body "## QuickLook Preview
 

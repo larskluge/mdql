@@ -45,14 +45,14 @@ The leak is caused by the interaction of three factors:
 ### A. Process Naming: `loadHTMLString(..., baseURL: nil)`
 `WKWebView` delegates HTML execution and rendering to out-of-process WebKit XPC services (`com.apple.WebKit.WebContent`). WebKit titles WebContent processes according to the security origin/URL scheme of the loaded document.
 
-In [`MarkdownWebController.swift`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/MarkdownWebController.swift):
+In [`MarkdownWebController.swift`](../../mdqlPreview/MarkdownWebController.swift):
 ```swift
 webView.loadHTMLString(html, baseURL: nil)
 ```
 Because `baseURL` is `nil`, WebKit assigns the document the origin `about:blank`. Activity Monitor and process inspection APIs display the scheme as the process title: **`about:`**.
 
 ### B. Circular Retain Cycle via `WKScriptMessageHandler`
-The primary bug is a circular retain cycle in [`MarkdownWebController.swift`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/MarkdownWebController.swift#L54-L64):
+The primary bug is a circular retain cycle in [`MarkdownWebController.swift`](../../mdqlPreview/MarkdownWebController.swift):
 
 ```swift
 override init() {
@@ -80,7 +80,7 @@ deinit {
 ### C. QuickLook Extension Caching (`quicklookd` / `QuickLookUIService`)
 - QuickLook extensions are hosted by long-lived macOS system daemons (`quicklookd` or `QuickLookUIService` managed via `pluginkit`).
 - To make previews fast, macOS does not terminate the extension host daemon when a single preview is closed.
-- When the preview view is dismissed, QuickLook drops its reference to [`PreviewController`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/PreviewController.swift), but [`MarkdownWebController`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/MarkdownWebController.swift) and its `WKWebView` remain alive in daemon memory due to the retain cycle.
+- When the preview view is dismissed, QuickLook drops its reference to [`PreviewController`](../../mdqlPreview/PreviewController.swift), but [`MarkdownWebController`](../../mdqlPreview/MarkdownWebController.swift) and its `WKWebView` remain alive in daemon memory due to the retain cycle.
 - Because the `WKWebView` instance is never destroyed, WebKit's internal `WebPageProxy` remains active and keeps the child `com.apple.WebKit.WebContent (about:)` process alive.
 - Each new preview creates a new controller and web view, leaking another `about:` process into the persistent host daemon.
 
@@ -88,13 +88,13 @@ deinit {
 
 ## 4. Implementation Plan
 
-To completely resolve the leak, we must break the retain cycle and introduce explicit teardown on view dismissal.
+Breaking the retain cycle resolves the leak; an explicit teardown releases WebKit resources deterministically.
 
 ### Step 1: Break the Retain Cycle with a Weak Proxy Handler
 
 Create a lightweight `WeakScriptMessageHandler` trampoline so `WKUserContentController` does not retain `MarkdownWebController`.
 
-In [`mdqlPreview/MarkdownWebController.swift`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/MarkdownWebController.swift):
+In [`mdqlPreview/MarkdownWebController.swift`](../../mdqlPreview/MarkdownWebController.swift):
 
 ```swift
 private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
@@ -122,54 +122,27 @@ override init() {
 }
 ```
 
-### Step 2: Implement Explicit Teardown on `MarkdownWebController`
+### Step 2: Explicit Teardown on `MarkdownWebController`
 
-Add a `teardown()` method to [`MarkdownWebController.swift`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/MarkdownWebController.swift) to immediately dismantle WebKit resources rather than waiting for garbage collection:
+`teardown()` stops the file watcher, halts loading, and releases the navigation delegate and the message handler. It is idempotent and final: a controller is not loaded again after it. `deinit` calls it, so releasing the controller is enough.
 
 ```swift
-/// Stops file watching and releases WebKit handlers and navigation delegates.
 func teardown() {
+    guard !isTornDown else { return }
+    isTornDown = true
     fileWatcher?.stop()
     fileWatcher = nil
+    webView.stopLoading()
     webView.navigationDelegate = nil
     webView.configuration.userContentController.removeScriptMessageHandler(forName: "mdql")
-    // Navigating to an empty string terminates in-flight JS and releases DOM resources
-    webView.loadHTMLString("", baseURL: nil)
 }
 ```
 
-Keep `deinit` as a fallback safety net:
-```swift
-deinit {
-    teardown()
-}
-```
+### Step 3: Tear Down When the Viewer Window Closes
 
-### Step 3: Wire Dismissal in `PreviewController`
+[`DocumentWindowController`](../../mdql/DocumentWindowController.swift) is the window's delegate and calls `teardown()` from `windowWillClose(_:)`, so the file watcher stops with the window rather than when the document is released.
 
-In [`mdqlPreview/PreviewController.swift`](file:///Users/johnfricker/Projects/mdql/mdqlPreview/PreviewController.swift), hook into `NSViewController`'s dismissal lifecycle:
-
-```swift
-override func viewDidDisappear() {
-    super.viewDidDisappear()
-    controller.teardown()
-}
-
-deinit {
-    xpcConnection?.invalidate()
-    controller.teardown()
-}
-```
-
-### Step 4: Wire Dismissal in `DocumentWindowController`
-
-In [`mdql/DocumentWindowController.swift`](file:///Users/johnfricker/Projects/mdql/mdql/DocumentWindowController.swift), conform to `NSWindowDelegate` and tear down when the window closes:
-
-```swift
-func windowWillClose(_ notification: Notification) {
-    controller.teardown()
-}
-```
+`PreviewController` needs no hook of its own: QuickLook releases it when the preview is dismissed (3.C), and with the cycle broken its `MarkdownWebController` and `WKWebView` go with it. A teardown in `viewDidDisappear()` would not end the WebContent process (only releasing the web view does) and would leave a preview QuickLook shows again without links or live updates.
 
 ---
 

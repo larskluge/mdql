@@ -11,10 +11,6 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
 
     let controller = MarkdownWebController()
 
-    deinit {
-        controller.teardown()
-    }
-
     convenience init() {
         let initialFrame = NSRect(origin: .zero, size: Self.defaultContentSize())
         let window = MarkdownWindow(

@@ -3,20 +3,67 @@ import Cocoa
 
 final class MainMenuTests: XCTestCase {
 
-    // MARK: - App menu (existing behavior, locked in by these tests)
+    // MARK: - App menu
+
+    private func appSubmenu(in menu: NSMenu) -> NSMenu? {
+        return menu.items.first?.submenu
+    }
 
     func testAppMenuExistsWithQuit() {
-        let menu = MainMenu.make()
-        let appItem = menu.items.first
-        XCTAssertNotNil(appItem?.submenu, "First item must have an app submenu")
+        let app = appSubmenu(in: MainMenu.make())
+        XCTAssertNotNil(app, "First item must have an app submenu")
 
-        let quit = appItem?.submenu?.items.first { $0.title == "Quit" }
+        let quit = app?.items.first { $0.title == "Quit" }
         XCTAssertNotNil(quit, "App menu must have a Quit item")
         XCTAssertEqual(quit?.keyEquivalent, "q")
         XCTAssertEqual(quit?.action, #selector(NSApplication.terminate(_:)))
     }
 
-    // MARK: - Edit menu (new feature: copy + select all)
+    func testAppMenuHasHideItem() {
+        let app = appSubmenu(in: MainMenu.make())
+        let hide = app?.items.first { $0.action == #selector(NSApplication.hide(_:)) }
+
+        XCTAssertNotNil(hide, "App menu must have a Hide item wired to hide:")
+        XCTAssertEqual(hide?.title, "Hide mdql")
+        XCTAssertEqual(hide?.keyEquivalent, "h", "Hide must use ⌘H")
+        XCTAssertEqual(hide?.keyEquivalentModifierMask, .command,
+                       "Hide must use the plain ⌘ modifier (no shift/option)")
+    }
+
+    func testAppMenuHasHideOthersItem() {
+        let app = appSubmenu(in: MainMenu.make())
+        let hideOthers = app?.items.first {
+            $0.action == #selector(NSApplication.hideOtherApplications(_:))
+        }
+
+        XCTAssertNotNil(hideOthers, "App menu must have a Hide Others item wired to hideOtherApplications:")
+        XCTAssertEqual(hideOthers?.title, "Hide Others")
+        XCTAssertEqual(hideOthers?.keyEquivalent, "h")
+        XCTAssertEqual(hideOthers?.keyEquivalentModifierMask, [.command, .option],
+                       "Hide Others must use ⌥⌘H, so it cannot shadow Hide's ⌘H")
+    }
+
+    func testAppMenuHasShowAllItem() {
+        let app = appSubmenu(in: MainMenu.make())
+        let showAll = app?.items.first {
+            $0.action == #selector(NSApplication.unhideAllApplications(_:))
+        }
+
+        XCTAssertNotNil(showAll, "App menu must have a Show All item wired to unhideAllApplications:")
+        XCTAssertEqual(showAll?.title, "Show All")
+        XCTAssertEqual(showAll?.keyEquivalent, "", "Show All has no shortcut on macOS")
+    }
+
+    func testAppMenuSeparatesHideGroupFromQuit() {
+        let items = appSubmenu(in: MainMenu.make())?.items ?? []
+
+        XCTAssertEqual(items.last?.action, #selector(NSApplication.terminate(_:)),
+                       "Quit must stay the last item of the app menu")
+        XCTAssertEqual(items.dropLast().last?.isSeparatorItem, true,
+                       "A separator must sit between the hide group and Quit")
+    }
+
+    // MARK: - Edit menu
 
     private func editSubmenu(in menu: NSMenu) -> NSMenu? {
         return menu.items.first { $0.title == "Edit" }?.submenu

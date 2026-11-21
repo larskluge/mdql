@@ -156,7 +156,7 @@ on the machine it is installed on.
 So `scripts/version.py` refuses to run when the shape breaks — a third
 occurrence of either setting, only one, or two that disagree — and each refusal
 names the file, the lines, and what would have shipped. CI runs that check on
-every push and pull request: `make version-test` is `.github/workflows/ci.yml`'s
+every pull request and every owl run on `main`: `make version-test` is `.github/workflows/ci.yml`'s
 first step, and it carries `test_the_repositorys_own_pbxproj_is_sound`, which
 reads this repository's actual pbxproj rather than a fixture. A change that adds
 a target-level override fails there in milliseconds, rather than at the next
@@ -192,10 +192,10 @@ which is how to tell which build is the one Finder is actually running, and
 published artifact to the commit it was built from.
 
 `make version-test` is the bump tool's own suite — `scripts/test_version.py` and
-`scripts/test_changelog_section.py`, stdlib `unittest`, no pytest to install. It
+`scripts/test_changelog_section.py`, stdlib `unittest`, no pytest to install —
+and it runs the suites of `developer-id-identity.sh` and `install.sh` with it. It
 runs first in `make test`, and first in CI, because it needs nothing and takes
-milliseconds: a broken bump tool should not be discovered after a long
-`xcodebuild`.
+seconds: a broken bump tool should not be discovered after a long `xcodebuild`.
 
 ## The build to hand to someone else
 
@@ -246,19 +246,22 @@ the target that installs, and it deliberately keeps its own path.
 
 ### What it needs, once
 
-A **Developer ID Application** certificate for team `GUGQ9MB76A`. Xcode →
-Settings → Accounts → the `GUGQ9MB76A` team → Manage Certificates → + →
-*Developer ID Application*. `codesign-app.sh` falls back to an *Apple
+A **Developer ID Application** certificate for team `GUGQ9MB76A`, issued by
+Apple's G2 authority — "Renewing the Developer ID certificate" below has the
+steps. `codesign-app.sh` falls back to an *Apple
 Development* certificate when there is none, which is fine for a build that
 never leaves this Mac and which Apple's notary will refuse — it says so rather
 than letting the failure arrive ten minutes into an upload.
 
-Both candidates are filtered by team: the script reads each certificate's `OU`,
-which is the field `codesign` reports back as `TeamIdentifier`, and takes only
-`GUGQ9MB76A`'s. A Mac carrying somebody else's Developer ID therefore gets a
-refusal naming the team rather than a bundle signed by the wrong authority, and
-two identities on the same team are an error listing both — `codesign` cannot be
-handed an ambiguous identity name.
+Both candidates are filtered by team: each certificate's `OU` is read, which is
+the field `codesign` reports back as `TeamIdentifier`, and only `GUGQ9MB76A`'s
+are taken. A Mac carrying somebody else's Developer ID therefore gets a refusal
+naming the team rather than a bundle signed by the wrong authority. Two
+Developer ID identities on the team are expected around a renewal:
+`scripts/developer-id-identity.sh` takes the one issued by G2, then the later
+expiry, and the app is signed with its SHA-1, since `codesign` cannot be handed
+a name two identities share. Two *Apple Development* identities are still an
+error listing both.
 
 A **notarytool keychain profile**:
 
@@ -270,6 +273,32 @@ xcrun notarytool store-credentials mdql-notary \
 A notary profile is a team credential, not a per-app one, so a Mac that already
 notarizes something else for `GUGQ9MB76A` needs no second profile — point
 `make dist` at the existing one with `NOTARY_PROFILE=<name> make dist`.
+
+### Renewing the Developer ID certificate
+
+**The Developer ID certificate from August 2026 ends on February 1, 2027.** It
+was issued by Apple's original Developer ID authority, which expires that day
+and takes every certificate it issued with it; replacements come from the G2
+authority, and the one created on October 2, 2026 runs to September 17, 2031
+([Apple's steps](https://developer.apple.com/help/account/certificates/replace-developer-id-certificates)).
+`codesign-app.sh` prints the issuer and the expiry of what it signs with, and
+warns while that is the previous authority's.
+
+Nothing already released needs re-signing: a zip `make dist` produced is
+notarized and carries a secure timestamp, which is the case Apple says keeps
+working. There is no `.pkg`, the one thing Apple says must be re-signed.
+
+1. Keychain Access → Certificate Assistant → Request a Certificate From a
+   Certificate Authority, "Saved to disk". The private key is made in the login
+   keychain and stays there.
+2. [Certificates](https://developer.apple.com/account/resources/certificates/list)
+   → + → Developer ID Application → **G2 Sub-CA (Xcode 11.4.1 or later)** →
+   upload the request, download the `.cer`, double-click it. Account Holder only.
+   Any other Sub-CA issues another certificate that ends in February 2027. Do not
+   revoke the old one; the two coexist.
+3. `scripts/developer-id-identity.sh GUGQ9MB76A` now prints the new one (third
+   field `G2`), and the next `make dist` reads `issuer:   Developer ID
+   Certification Authority, OU G2` with no warning.
 
 ### Why notarization is not optional
 
@@ -365,14 +394,14 @@ one.
 
 Two workflows run on this repository, and neither of them releases.
 
-`.github/workflows/ci.yml`, on every push to `main` and every pull request, runs
-three steps in this order:
+`.github/workflows/ci.yml`, on every pull request to `main` and on `main` when owl
+dispatches it, runs three steps in this order:
 
 1. **Test the version tooling** — `make version-test`, first because it needs
-   nothing installed and takes milliseconds.
+   nothing installed and takes seconds.
 2. **Build** —
    `xcodebuild build -project mdql.xcodeproj -scheme mdql -destination "platform=macOS"`.
-3. **Run tests** — `make test`, which is `version-test` again in milliseconds and
+3. **Run tests** — `make test`, which is `version-test` again in seconds and
    then `xcodebuild … -scheme mdql … test`.
 
 The third step calls the Makefile's own target rather than repeating the

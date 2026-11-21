@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from version import (
     CHANGELOG_HEADER,
@@ -545,18 +546,20 @@ class ReleaseRunTests(unittest.TestCase):
         self.root.mkdir()
         self.hooks.mkdir()
 
-        self.git("-c", "init.defaultBranch=main", "init", "--quiet")
+        # This machine's own git config must not reach in: a global signing key,
+        # hook or `core.autocrlf` would pass or fail these for reasons that are
+        # not the code. In the process's environment rather than each call's,
+        # because `main()` runs here too and makes its git calls from it.
+        isolated = mock.patch.dict(
+            os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        )
+        isolated.start()
+        self.addCleanup(isolated.stop)
+
+        self.git("init", "--quiet", "--initial-branch=main")
         self.git("config", "user.name", "Release Test")
         self.git("config", "user.email", "release-test@example.invalid")
-        # This machine's own git config must not reach in: a global signing key
-        # or hooks path would fail the commit for reasons that are not the code.
-        self.git("config", "commit.gpgsign", "false")
-        self.git("config", "tag.gpgsign", "false")
         self.git("config", "core.hooksPath", str(self.hooks))
-        # A machine with `core.autocrlf = true` would rewrite the endings under
-        # the CRLF test below, and it would then pass or fail for git's reasons
-        # rather than the tool's.
-        self.git("config", "core.autocrlf", "false")
 
         self.pbxproj = self.root / PBXPROJ
         self.pbxproj.parent.mkdir(parents=True)
@@ -611,6 +614,15 @@ class ReleaseRunTests(unittest.TestCase):
         """
         self.pbxproj.write_text(write_version(self.pbxproj.read_text(), version, 71))
         self.git("commit", "-m", subject, "--", PBXPROJ)
+
+    def test_this_machines_git_config_does_not_reach_the_repository(self):
+        # A hook declared in `~/.gitconfig` (`hook.<name>.command`, git 2.54)
+        # runs in every repository on the machine, this one included, and the
+        # repository's own `core.hooksPath` does not turn it off. One that
+        # refuses commits on `main` failed all of these in setUp — for whoever
+        # it applied to.
+        listed = self.git("config", "--list", "--show-scope").splitlines()
+        self.assertEqual({line.split("\t")[0] for line in listed}, {"local"})
 
     def test_a_dry_run_writes_nothing_and_leaves_no_commit_or_tag(self):
         self.commit("feat: .md link navigation")

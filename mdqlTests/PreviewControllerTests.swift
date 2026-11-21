@@ -279,6 +279,14 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertFalse(version.isEmpty, "Version should never be empty")
     }
 
+    func testPreviewControllerSetsAppearanceFromSystem() {
+        let preview = PreviewController()
+        _ = preview.view
+        let expected = NSApp?.effectiveAppearance ?? NSApplication.shared.effectiveAppearance
+        XCTAssertEqual(preview.view.appearance?.name, expected.name,
+                       "PreviewController view appearance should match system effective appearance")
+    }
+
     // MARK: - Lifecycle and deallocation
 
     func testMarkdownWebControllerDeallocatesWithoutRetainCycle() {
@@ -297,7 +305,6 @@ final class PreviewControllerTests: XCTestCase {
         autoreleasepool {
             let preview = PreviewController()
             _ = preview.view
-            preview.viewDidDisappear()
             weakPreviewController = preview
             weakWebController = preview.controller
             XCTAssertNotNil(weakPreviewController)
@@ -308,19 +315,11 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertNil(weakWebController, "MarkdownWebController should deallocate")
     }
 
-    func testTeardownClearsNavigationDelegateAndAllowsReArm() throws {
+    func testTeardownIsIdempotentAndClearsNavigationDelegate() {
         let controller = MarkdownWebController()
         XCTAssertNotNil(controller.webView.navigationDelegate)
         controller.teardown()
+        controller.teardown()
         XCTAssertNil(controller.webView.navigationDelegate)
-
-        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-        let file = tmpDir.appendingPathComponent("test.md")
-        try "# Test".write(to: file, atomically: true, encoding: .utf8)
-
-        try controller.loadMarkdownFile(at: file)
-        XCTAssertNotNil(controller.webView.navigationDelegate)
     }
 }
