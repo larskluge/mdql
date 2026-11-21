@@ -6,10 +6,23 @@ import os
 
 class PreviewController: NSViewController, QLPreviewingController {
     let controller = MarkdownWebController()
+
+    /// Makes the connection to the unsandboxed service (URL opening, file
+    /// reading, checkbox writes), on the first call that needs it and again
+    /// after one is invalidated. Tests connect to a service of their own.
+    var makeConnection: () -> NSXPCConnection = { NSXPCConnection(serviceName: "com.mdql.app.open-url") }
+
+    /// How long a call to the service may go unanswered before it fails.
+    var replyTimeout: TimeInterval = 10
+
     private var xpcConnection: NSXPCConnection?
 
+    /// Fails each call still waiting on the service: the connection was
+    /// interrupted or invalidated, so no reply will come.
+    private var pendingCalls: [UUID: () -> Void] = [:]
+
     /// Injectable URL opener. Default uses the XPC service to open in the default browser.
-    var openURL: (URL) -> Void {
+    var openURL: (URL, @escaping (PlainError?) -> Void) -> Void {
         get { controller.openURL }
         set { controller.openURL = newValue }
     }
@@ -40,30 +53,35 @@ class PreviewController: NSViewController, QLPreviewingController {
             self?.view.appearance = app.effectiveAppearance
         }
 
-        // Set up XPC connection to unsandboxed service (URL opening + file reading)
-        let connection = NSXPCConnection(serviceName: "com.mdql.app.open-url")
-        connection.remoteObjectInterface = NSXPCInterface(with: OpenURLProtocol.self)
-        connection.resume()
-        self.xpcConnection = connection
-
-        controller.openURL = { [weak self] url in
-            guard let proxy = self?.xpcProxy else { return }
-            proxy.open(url) { _ in }
+        controller.openURL = { [weak self] url, completion in
+            guard let self else { return completion(.helperDidntAnswer) }
+            self.call(failure: PlainError.helperDidntAnswer, completion: completion) { service, reply in
+                service.open(url) { opened in
+                    reply(opened ? nil : PlainError("macOS couldn't open it"))
+                }
+            }
         }
         controller.readFile = { [weak self] url, completion in
-            guard let document = self?.controller.documentURL,
-                  let proxy = self?.xpcProxy else { completion(nil); return }
-            proxy.readFile(at: url.path, previewing: document.path) { content, _ in
-                DispatchQueue.main.async { completion(content) }
+            guard let self, let document = self.controller.documentURL else { return completion(.failure(.helperDidntAnswer)) }
+            self.call(failure: .failure(.helperDidntAnswer), completion: completion) { service, reply in
+                service.readFile(at: url.path, previewing: document.path) { text, encoding, failure in
+                    if let text {
+                        reply(.success(MarkdownText(string: text, encoding: encoding)))
+                    } else {
+                        reply(.failure(PlainError(failure ?? "the file couldn't be read")))
+                    }
+                }
             }
         }
         controller.interactive = true
         controller.toggleCheckbox = { [weak self] offset, checked, completion in
-            guard let url = self?.controller.fileURL,
-                  let document = self?.controller.documentURL,
-                  let proxy = self?.xpcProxy else { completion(.failed); return }
-            proxy.toggleCheckbox(at: url.path, offset: offset, checked: checked, previewing: document.path) { outcome in
-                DispatchQueue.main.async { completion(outcome) }
+            guard let self, let url = self.controller.fileURL, let document = self.controller.documentURL else {
+                return completion(.failed(.helperDidntAnswer))
+            }
+            self.call(failure: .failed(.helperDidntAnswer), completion: completion) { service, reply in
+                service.toggleCheckbox(at: url.path, offset: offset, checked: checked, previewing: document.path) { outcome, failure in
+                    reply(CheckboxToggleResult(outcome: outcome, reason: failure))
+                }
             }
         }
     }
@@ -93,10 +111,68 @@ class PreviewController: NSViewController, QLPreviewingController {
         controller.handleOpenMarkdown(urlString)
     }
 
-    private var xpcProxy: OpenURLProtocol? {
-        xpcConnection?.remoteObjectProxyWithErrorHandler({ error in
+    // MARK: - XPC
+
+    /// Sends one request to the service and completes it exactly once, on the
+    /// main queue: with the service's reply, or with `failure` when the proxy
+    /// reports an error, the connection is interrupted or invalidated, or no
+    /// reply comes within `replyTimeout`. Never silence.
+    private func call<Reply>(failure: Reply, completion: @escaping (Reply) -> Void,
+                             _ send: (OpenURLProtocol, @escaping (Reply) -> Void) -> Void) {
+        let id = UUID()
+        var answered = false
+        let finish: (Reply) -> Void = { [weak self] reply in
+            DispatchQueue.main.async {
+                guard !answered else { return }
+                answered = true
+                self?.pendingCalls[id] = nil
+                completion(reply)
+            }
+        }
+        pendingCalls[id] = { finish(failure) }
+        let proxy = connection().remoteObjectProxyWithErrorHandler { error in
             Self.log.error("XPC call to the open-url service failed: \(error.localizedDescription, privacy: .public)")
-        }) as? OpenURLProtocol
+            finish(failure)
+        } as? OpenURLProtocol
+        guard let proxy else {
+            Self.log.error("The open-url service's proxy does not speak OpenURLProtocol")
+            return finish(failure)
+        }
+        send(proxy, finish)
+        let timeout = replyTimeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            if !answered {
+                Self.log.error("The open-url service did not answer within \(timeout, privacy: .public) s")
+            }
+            finish(failure)
+        }
+    }
+
+    private func connection() -> NSXPCConnection {
+        if let xpcConnection { return xpcConnection }
+        let connection = makeConnection()
+        connection.remoteObjectInterface = NSXPCInterface(with: OpenURLProtocol.self)
+        connection.interruptionHandler = { [weak self] in
+            Self.log.error("The open-url service's connection was interrupted")
+            DispatchQueue.main.async { self?.failPendingCalls() }
+        }
+        connection.invalidationHandler = { [weak self, weak connection] in
+            Self.log.error("The open-url service's connection was invalidated")
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if self.xpcConnection === connection { self.xpcConnection = nil }
+                self.failPendingCalls()
+            }
+        }
+        connection.resume()
+        xpcConnection = connection
+        return connection
+    }
+
+    private func failPendingCalls() {
+        let calls = pendingCalls.values
+        pendingCalls.removeAll()
+        calls.forEach { $0() }
     }
 
     private static let log = Logger(subsystem: "com.mdql.app", category: "preview")

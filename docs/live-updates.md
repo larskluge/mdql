@@ -49,6 +49,7 @@ A `DispatchSource.makeFileSystemObjectSource` monitors the file for `.write`, `.
 
 Key details:
 - **Atomic save recovery** — Editors like vim and `sed -i` delete the original file and rename a temp file in its place. The watcher detects `.rename`/`.delete` events, closes the old file descriptor, waits 50ms for the new file to settle, then re-opens at the same path.
+- **A file moved or deleted is not given up on** — when nothing is at the path after those 50ms, the watcher tells the controller (an amber "notes.md was moved or deleted" notice) and watches the parent folder with a second `DispatchSource`; once a file is back at the path it watches that one, says so (green "notes.md is back") and calls back, which reloads it. The Quick Look sandbox may not let the extension open the folder: then it looks for the file once a second instead.
 - **100ms coalescing** — Rapid writes (e.g., `echo` in a loop) are batched via a `DispatchWorkItem` that resets on each event. Only the final state triggers a callback.
 - **Main queue throughout** — The source delivers its events on the main queue, where `start`, `stop` and the callback also run, so the watcher's state is touched from one thread and the callback can update the WebView.
 

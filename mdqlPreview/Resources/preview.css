@@ -32,6 +32,9 @@ body {
     background-color: var(--bg-color);
     margin: 0;
     padding: 30px;
+    /* Room for the notices on top, while any show: see mdql's chrome below. */
+    padding-top: max(30px, var(--mdql-notice-room, 0px));
+    transition: padding-top 0.25s ease;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -40,7 +43,7 @@ body {
    fade so scrolled text doesn't collide with it. QuickLook has no chrome of
    its own — there the extra spacing and gradient would just be dead space. */
 body.mdql-app {
-    padding-top: 60px;
+    padding-top: max(60px, var(--mdql-notice-room, 0px));
 }
 
 body.mdql-app::before {
@@ -252,4 +255,162 @@ input[type="checkbox"][data-cb-offset] {
 
 del {
     text-decoration: line-through;
+}
+
+/* mdql's own chrome, over the document: the back button, the notices on top,
+   the label at the bottom, the version. Anything wrong shows on top, where it
+   is seen; only what is fine to miss shows at the bottom. All of it is the
+   same frosted glass, one size top and bottom. `--mdql-top` is how far the
+   host's titlebar reaches over the page: 0 in Quick Look. */
+
+.mdql-glass {
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.74);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+    /* The hairline border is an inset shadow, so that it adds nothing to the
+       height the back button and the notices share. */
+    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.09), 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 20px rgba(0, 0, 0, 0.08);
+    color: var(--text-color);
+    font: 500 12.5px/1.4 -apple-system, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mdql-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mdql-icon svg {
+    display: block;
+}
+
+.mdql-text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mdql-detail {
+    font-weight: 400;
+    opacity: 0.5;
+}
+
+#mdql-back {
+    position: fixed;
+    top: calc(var(--mdql-top, 0px) + 20px);
+    left: 20px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    color: #555;
+    cursor: pointer;
+    z-index: 10000;
+}
+
+#mdql-back:hover {
+    background: rgba(255, 255, 255, 0.92);
+}
+
+#mdql-notices {
+    position: fixed;
+    top: calc(var(--mdql-top, 0px) + 20px);
+    left: 50%;
+    transform: translateX(-50%);
+    /* As far from the right edge as from the left, which keeps it clear of the back button. */
+    max-width: calc(100% - 2 * (20px + 36px + 12px));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 10000;
+    pointer-events: none;
+}
+
+.mdql-notice {
+    max-width: 100%;
+    pointer-events: auto;
+    animation: mdql-in 0.2s ease-out;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.mdql-notice.mdql-leaving {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+
+@keyframes mdql-in {
+    from { opacity: 0; transform: translateY(-6px); }
+}
+
+.mdql-failed .mdql-icon { color: #d64545; }
+.mdql-refused .mdql-icon { color: #8a8a8a; }
+.mdql-cleared .mdql-icon { color: #2f9e5b; }
+
+.mdql-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #c98a00;
+    animation: mdql-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes mdql-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+#mdql-label {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 40px);
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+#mdql-label.visible {
+    opacity: 1;
+}
+
+#mdql-label .mdql-icon {
+    color: #8a8a8a;
+}
+
+#mdql-version {
+    position: fixed;
+    right: 12px;
+    bottom: 8px;
+    font: 10px/1.4 monospace;
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 9998;
+}
+
+@media (prefers-color-scheme: dark) {
+    .mdql-glass {
+        background: rgba(44, 44, 46, 0.72);
+        box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.35);
+    }
+    .mdql-detail { opacity: 0.55; }
+    #mdql-back { color: #ccc; }
+    #mdql-back:hover { background: rgba(60, 60, 62, 0.88); }
+    .mdql-failed .mdql-icon { color: #ff7b72; }
+    .mdql-cleared .mdql-icon { color: #5fd38d; }
+    .mdql-dot { background: #f2b33d; }
 }

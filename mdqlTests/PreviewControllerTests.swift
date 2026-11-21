@@ -51,8 +51,9 @@ final class PreviewControllerTests: XCTestCase {
         let expectation = expectation(description: "openURL callback invoked")
         var receivedURL: URL?
 
-        controller.openURL = { url in
+        controller.openURL = { url, done in
             receivedURL = url
+            done(nil)
             expectation.fulfill()
         }
 
@@ -67,8 +68,9 @@ final class PreviewControllerTests: XCTestCase {
         controller.loadView()
 
         var callbackInvoked = false
-        controller.openURL = { _ in
+        controller.openURL = { _, done in
             callbackInvoked = true
+            done(nil)
         }
 
         controller.handleOpenURL("")
@@ -81,8 +83,9 @@ final class PreviewControllerTests: XCTestCase {
         controller.loadView()
 
         var receivedURLs: [URL] = []
-        controller.openURL = { url in
+        controller.openURL = { url, done in
             receivedURLs.append(url)
+            done(nil)
         }
 
         controller.handleOpenURL("https://example.com")
@@ -96,7 +99,7 @@ final class PreviewControllerTests: XCTestCase {
     func testOpenURLRefusesSchemesOutsideTheAllowlist() {
         let controller = MarkdownWebController()
         var opened: [String] = []
-        controller.openURL = { opened.append($0.absoluteString) }
+        controller.openURL = { url, done in opened.append(url.absoluteString); done(nil) }
 
         for string in refusedURLs {
             controller.handleOpenURL(string)
@@ -136,9 +139,12 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertTrue(html.contains("href=\"12-jobs.md\""), "Link 12 must have correct href")
     }
 
-    func testRenderedHTMLContainsStatusBar() {
+    func testRenderedHTMLHasTheBottomLabelAndNoStatusStrip() {
         let html = MarkdownRenderer.render(markdown: "test", title: "t")
-        XCTAssertTrue(html.contains("id=\"mdql-status\""), "HTML must contain status bar element")
+        XCTAssertTrue(html.contains("label.id = 'mdql-label'"), "HTML must make the bottom label")
+        XCTAssertFalse(html.contains("mdql-status"), "The full-width hover strip is gone")
+        XCTAssertFalse(html.contains("Opening:"), "__mdqlShowToast adds no prefix: callers pass the whole text")
+        XCTAssertFalse(html.contains("\u{1F4C4}") || html.contains("\u{1F310}"), "No emoji")
     }
 
     func testRenderedHTMLContainsHoverHandlers() {
@@ -264,7 +270,7 @@ final class PreviewControllerTests: XCTestCase {
         var read: [String] = []
         controller.readFile = { url, completion in
             read.append(url.lastPathComponent)
-            completion(try? String(contentsOf: url, encoding: .utf8))
+            completion(MarkdownText.read(url))
         }
         try controller.loadMarkdownFile(at: document)
 
@@ -287,7 +293,7 @@ final class PreviewControllerTests: XCTestCase {
         // reader has already navigated away from.
         let controller = MarkdownWebController()
         controller.readFile = { url, completion in
-            completion(try? String(contentsOf: url, encoding: .utf8))
+            completion(MarkdownText.read(url))
         }
 
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -315,7 +321,7 @@ final class PreviewControllerTests: XCTestCase {
         var read: [String] = []
         controller.readFile = { url, completion in
             read.append(url.lastPathComponent)
-            completion(try? String(contentsOf: url, encoding: .utf8))
+            completion(MarkdownText.read(url))
         }
 
         let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -373,6 +379,74 @@ final class PreviewControllerTests: XCTestCase {
         XCTAssertEqual(preview.view.effectiveAppearance.name, .darkAqua, "Dark Mode must render dark")
     }
 
+    // MARK: - Every XPC call answers, once
+
+    func testAFalseOpenReplyFailsTheCallAndSaysSo() throws {
+        let (preview, service) = try previewWithService()
+        service.onOpen = { _, reply in reply(false) }
+        preview.handleOpenURL("https://example.com/")
+        try waitForNotice(.failed, "Couldn't open the link · macOS couldn't open it", in: preview.controller.webView)
+    }
+
+    func testAnXPCProxyErrorFailsTheCallAndSaysSo() throws {
+        let (preview, service) = try previewWithService()
+        service.onOpen = { _, _ in NSXPCConnection.current()?.invalidate() } // the service goes without a reply
+        let answers = countAnswers(of: preview)
+        preview.handleOpenURL("https://example.com/")
+        try waitForNotice(.failed, "Couldn't open the link · mdql's helper didn't answer", in: preview.controller.webView)
+        settle()
+        XCTAssertEqual(answers.all, [.helperDidntAnswer], "The call answers exactly once")
+    }
+
+    func testAnInterruptedConnectionFailsTheCallAndSaysSo() throws {
+        let (preview, service) = try previewWithService()
+        let asked = expectation(description: "the service got the call")
+        var reply: ((Bool) -> Void)?
+        service.onOpen = { _, held in reply = held; asked.fulfill() }
+        let answers = countAnswers(of: preview)
+        preview.handleOpenURL("https://example.com/")
+        wait(for: [asked], timeout: 10)
+
+        try XCTUnwrap(service.clientConnection?.interruptionHandler)() // as when launchd relaunches the service
+        try waitForNotice(.failed, "Couldn't open the link · mdql's helper didn't answer", in: preview.controller.webView)
+        try XCTUnwrap(reply)(true) // too late
+        settle()
+        XCTAssertEqual(answers.all, [.helperDidntAnswer], "The call answers exactly once")
+    }
+
+    func testACallTheServiceNeverAnswersFailsInTime() throws {
+        let (preview, service) = try previewWithService()
+        preview.replyTimeout = 0.3
+        service.onOpen = { _, _ in }
+        preview.handleOpenURL("https://example.com/")
+        try waitForNotice(.failed, "Couldn't open the link · mdql's helper didn't answer", in: preview.controller.webView)
+    }
+
+    func testALinkedNoteTheServiceCannotReadSaysWhy() throws {
+        let (preview, service) = try previewWithService()
+        try write("# Notes", to: try XCTUnwrap(preview.fileURL).deletingLastPathComponent().appendingPathComponent("notes.md"))
+        service.onRead = { _, reply in reply(nil, .utf8, "no permission to read it") }
+        preview.handleOpenMarkdown("notes.md")
+        try waitForNotice(.failed, "Couldn't open notes.md · no permission to read it", in: preview.controller.webView)
+        XCTAssertEqual(preview.fileURL?.lastPathComponent, "page.md")
+    }
+
+    func testALinkedNoteReadThroughTheServiceKeepsItsEncoding() throws {
+        let (preview, service) = try previewWithService()
+        try write("# Notes", to: try XCTUnwrap(preview.fileURL).deletingLastPathComponent().appendingPathComponent("notes.md"))
+        service.onRead = { _, reply in reply("Crème brûlée, 5 €", .windowsLatin1, nil) }
+        preview.handleOpenMarkdown("notes.md")
+        try waitUntil("document.body.innerText.includes('Crème brûlée, 5 €')", in: preview.controller.webView)
+        try waitForNotice(.failed, "Not UTF-8 · shown as Windows Latin-1, some characters may be off", in: preview.controller.webView)
+    }
+
+    func testATickTheServiceCouldNotSaveSaysWhy() throws {
+        let (preview, service) = try previewWithService("- [ ] task\n")
+        service.onToggle = { reply in reply(.failed, "the file is read-only") }
+        preview.controller.handleToggleCheckbox(offset: 3, checked: true)
+        try waitForNotice(.failed, "Tick not saved · the file is read-only", in: preview.controller.webView)
+    }
+
     // MARK: - Lifecycle and deallocation
 
     func testMarkdownWebControllerDeallocatesWithoutRetainCycle() {
@@ -407,5 +481,85 @@ final class PreviewControllerTests: XCTestCase {
         controller.teardown()
         controller.teardown()
         XCTAssertNil(controller.webView.navigationDelegate)
+    }
+
+    // MARK: - Helpers
+
+    /// A preview showing `markdown`, whose XPC calls go to a service of the
+    /// test's own.
+    /// Its calls never time out within a test, which therefore sees how the
+    /// failure itself is answered.
+    private func previewWithService(_ markdown: String = "Text.") throws -> (PreviewController, FakeOpenURLService) {
+        let service = FakeOpenURLService()
+        addTeardownBlock { service.listener.invalidate() }
+        let preview = PreviewController()
+        preview.loadView()
+        preview.replyTimeout = 600
+        addTeardownBlock { preview.controller.teardown() }
+        preview.makeConnection = { service.connect() }
+        let file = try write(markdown, to: try makeFolder().appendingPathComponent("page.md"))
+        try preview.loadMarkdownFile(at: file)
+        try waitUntilLoaded(preview.controller.webView)
+        return (preview, service)
+    }
+
+    /// Every answer `preview`'s link opener gives, from here on.
+    private func countAnswers(of preview: PreviewController) -> Answers {
+        let answers = Answers()
+        let open = preview.openURL
+        preview.openURL = { url, done in
+            open(url) { error in
+                answers.all.append(error)
+                done(error)
+            }
+        }
+        return answers
+    }
+
+    private final class Answers {
+        var all: [PlainError?] = []
+    }
+}
+
+/// The open-url service's stand-in: an anonymous listener in the test's own
+/// process, answering as each test says.
+private final class FakeOpenURLService: NSObject, OpenURLProtocol, NSXPCListenerDelegate {
+    let listener = NSXPCListener.anonymous()
+    private(set) var clientConnection: NSXPCConnection?
+
+    var onOpen: (URL, @escaping (Bool) -> Void) -> Void = { _, reply in reply(true) }
+    var onRead: (String, @escaping (String?, MarkdownEncoding, String?) -> Void) -> Void = { _, reply in reply(nil, .utf8, "not set up") }
+    var onToggle: (@escaping (CheckboxToggleOutcome, String?) -> Void) -> Void = { reply in reply(.toggled, nil) }
+
+    override init() {
+        super.init()
+        listener.delegate = self
+        listener.resume()
+    }
+
+    func connect() -> NSXPCConnection {
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        clientConnection = connection
+        return connection
+    }
+
+    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
+        connection.exportedInterface = NSXPCInterface(with: OpenURLProtocol.self)
+        connection.exportedObject = self
+        connection.resume()
+        return true
+    }
+
+    func open(_ url: URL, withReply reply: @escaping (Bool) -> Void) {
+        onOpen(url, reply)
+    }
+
+    func readFile(at path: String, previewing documentPath: String, withReply reply: @escaping (String?, MarkdownEncoding, String?) -> Void) {
+        onRead(path, reply)
+    }
+
+    func toggleCheckbox(at path: String, offset: Int, checked: Bool, previewing documentPath: String,
+                        withReply reply: @escaping (CheckboxToggleOutcome, String?) -> Void) {
+        onToggle(reply)
     }
 }

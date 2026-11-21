@@ -1,4 +1,5 @@
 import XCTest
+import WebKit
 
 final class FileWatcherTests: XCTestCase {
 
@@ -78,6 +79,8 @@ final class FileWatcherTests: XCTestCase {
         let watcher = FileWatcher(url: url) {
             expectation.fulfill()
         }
+        var availability: [Bool] = []
+        watcher.availabilityChanged = { availability.append($0) }
         watcher.start()
 
         // Simulate atomic save: write to temp file, then rename over original
@@ -88,6 +91,7 @@ final class FileWatcherTests: XCTestCase {
         }
 
         waitForExpectations(timeout: 2)
+        XCTAssertEqual(availability, [], "A file replaced in place was never missing")
         watcher.stop()
     }
 
@@ -247,5 +251,78 @@ final class FileWatcherTests: XCTestCase {
         // Should not crash, just silently fail to monitor
         XCTAssertTrue(watcher.isWatching, "isWatching should be true even if file doesn't exist")
         watcher.stop()
+    }
+
+    // MARK: - A file moved or deleted is not given up on
+
+    func testADeletedFileRecreated300msLaterIsWatchedAgain() throws {
+        try assertWatchedAgain(afterRecreatingIn: 0.3)
+    }
+
+    func testADeletedFileRecreated3sLaterIsWatchedAgain() throws {
+        try assertWatchedAgain(afterRecreatingIn: 3)
+    }
+
+    func testAMovedFileIsMissingUntilOneIsBackAtItsPath() throws {
+        let url = tempFile()
+        var availability: [Bool] = []
+        let watcher = FileWatcher(url: url) {}
+        watcher.availabilityChanged = { availability.append($0) }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try FileManager.default.moveItem(at: url, to: tempDir.appendingPathComponent("elsewhere.md"))
+        waitUntil { availability == [false] }
+        try "# Back".write(to: url, atomically: true, encoding: .utf8)
+        waitUntil { availability == [false, true] }
+    }
+
+    func testTheControllerSaysTheFileIsMissingThenBackAndShowsTheLatest() throws {
+        let url = tempFile("notes.md", content: "First version.")
+        let controller = MarkdownWebController()
+        addTeardownBlock { controller.teardown() }
+        controller.readFile = { url, completion in completion(MarkdownText.read(url)) }
+        try controller.loadMarkdownFile(at: url)
+        try waitUntilLoaded(controller.webView)
+
+        try FileManager.default.removeItem(at: url)
+        try waitForNotice(.waiting, "notes.md was moved or deleted · updates resume when it's back", in: controller.webView)
+        settle(0.3)
+        try "Second version.".write(to: url, atomically: false, encoding: .utf8)
+        try waitForNotice(.cleared, "notes.md is back · showing the latest", in: controller.webView)
+        try waitUntil("document.body.innerText.includes('Second version.')", in: controller.webView)
+        XCTAssertEqual(try notices(in: controller.webView), ["cleared: notes.md is back · showing the latest"],
+                       "The green notice replaces the amber one")
+    }
+
+    /// Deletes the watched file, recreates it `delay` later, and checks the
+    /// watcher says it went and came back, calls back, and keeps watching it.
+    private func assertWatchedAgain(afterRecreatingIn delay: TimeInterval, file: StaticString = #filePath, line: UInt = #line) throws {
+        let url = tempFile()
+        var availability: [Bool] = []
+        var callbacks = 0
+        let watcher = FileWatcher(url: url) { callbacks += 1 }
+        watcher.availabilityChanged = { availability.append($0) }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try FileManager.default.removeItem(at: url)
+        waitUntil(file: file, line: line) { availability == [false] }
+        let before = callbacks
+        RunLoop.current.run(until: Date().addingTimeInterval(delay))
+        try "# Recreated".write(to: url, atomically: false, encoding: .utf8)
+        waitUntil(timeout: 2, file: file, line: line) { availability == [false, true] && callbacks > before }
+
+        let afterReturn = callbacks
+        try "# Written again".write(to: url, atomically: false, encoding: .utf8)
+        waitUntil(timeout: 2, file: file, line: line) { callbacks > afterReturn }
+    }
+
+    private func waitUntil(timeout: TimeInterval = 2, file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertTrue(condition(), "Timed out", file: file, line: line)
     }
 }

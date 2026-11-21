@@ -11,6 +11,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
 
     let controller = MarkdownWebController()
 
+    private var titlebarObservation: NSKeyValueObservation?
+
     convenience init() {
         let initialFrame = NSRect(origin: .zero, size: Self.defaultContentSize())
         let window = MarkdownWindow(
@@ -38,22 +40,33 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
         controller.fileURLDidChange = { [weak self] _ in
             self?.synchronizeWindowTitleWithDocumentName()
         }
-        controller.openURL = { url in
-            _ = AccessPolicy.open(url, with: { NSWorkspace.shared.open($0) })
+        controller.openURL = { url, completion in
+            completion(AccessPolicy.open(url, with: { NSWorkspace.shared.open($0) }) ? nil : PlainError("macOS couldn't open it"))
         }
         controller.readFile = { url, completion in
-            let content = try? String(contentsOf: url, encoding: .utf8)
-            completion(content)
+            completion(MarkdownText.read(url))
         }
         controller.toggleCheckbox = { [weak self] offset, checked, completion in
-            guard let url = self?.controller.fileURL else { completion(.failed); return }
+            guard let url = self?.controller.fileURL else { return completion(.failed(.fileNotFound)) }
             DispatchQueue.global(qos: .userInitiated).async {
-                let outcome = CheckboxToggle.toggle(fileAt: url, offset: offset, checked: checked)
-                DispatchQueue.main.async { completion(outcome) }
+                let result = CheckboxToggle.toggle(fileAt: url, offset: offset, checked: checked)
+                DispatchQueue.main.async { completion(result) }
             }
         }
 
         installToolbar(on: window)
+
+        // The back button and the notices sit below the titlebar, however
+        // tall the toolbar makes it, in full screen too.
+        titlebarObservation = window.observe(\.contentLayoutRect, options: [.initial]) { [weak self] window, _ in
+            self?.controller.topInset = Self.titlebarHeight(of: window)
+        }
+    }
+
+    /// How far the titlebar and toolbar reach down over the full-size
+    /// content view: the window's height above the rect content is not under.
+    static func titlebarHeight(of window: NSWindow) -> CGFloat {
+        max(0, window.frame.height - window.contentLayoutRect.maxY)
     }
 
     private static func defaultContentSize() -> NSSize {
@@ -77,11 +90,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
         return frame
     }
 
-    /// Shows `markdown`, read from `url` by the document, in the window's web
-    /// view. The title follows via `fileURLDidChange`, which also covers the
-    /// files reached later by following links inside the preview.
-    func load(_ markdown: String, readFrom url: URL) {
-        controller.loadMarkdown(markdown, readFrom: url)
+    /// Shows `markdown`, read from `url` as `encoding` by the document, in the
+    /// window's web view. The title follows via `fileURLDidChange`, which also
+    /// covers the files reached later by following links inside the preview.
+    func load(_ markdown: String, encoding: MarkdownEncoding = .utf8, readFrom url: URL) {
+        controller.loadMarkdown(markdown, encoding: encoding, readFrom: url)
     }
 
     /// Titles the window with the file actually on screen, which is not always
@@ -140,6 +153,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        titlebarObservation = nil
         controller.teardown()
     }
 }

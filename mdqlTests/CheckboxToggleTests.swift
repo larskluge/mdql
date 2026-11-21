@@ -104,7 +104,7 @@ final class CheckboxToggleTests: XCTestCase {
     func testNonexistentFileFails() throws {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("nonexistent-\(UUID().uuidString).md")
-        XCTAssertEqual(CheckboxToggle.toggle(fileAt: missing, offset: 3, checked: true), .failed)
+        XCTAssertEqual(CheckboxToggle.toggle(fileAt: missing, offset: 3, checked: true), .failed(.fileNotFound))
     }
 
     func testReadOnlyFileFailsAndIsNotModified() throws {
@@ -114,7 +114,7 @@ final class CheckboxToggleTests: XCTestCase {
         defer {
             try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: tempURL.path)
         }
-        XCTAssertEqual(CheckboxToggle.toggle(fileAt: tempURL, offset: 3, checked: true), .failed)
+        XCTAssertEqual(CheckboxToggle.toggle(fileAt: tempURL, offset: 3, checked: true), .failed(PlainError("the file is read-only")))
         XCTAssertEqual(try read(), original)
     }
 }

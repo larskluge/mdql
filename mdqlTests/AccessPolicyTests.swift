@@ -140,6 +140,17 @@ extension XCTestCase {
         return url
     }
 
+    /// `Fixtures/<name>.md`: from the test bundle when it carries it, else
+    /// beside this source file.
+    func fixtureURL(_ name: String) -> URL {
+        let bundle = Bundle(for: type(of: self))
+        return bundle.url(forResource: name, withExtension: "md", subdirectory: "Fixtures")
+            ?? URL(fileURLWithPath: #file)
+                .deletingLastPathComponent()
+                .appendingPathComponent("Fixtures")
+                .appendingPathComponent("\(name).md")
+    }
+
     func realPath(_ url: URL) throws -> String {
         let resolved = try XCTUnwrap(realpath(url.path, nil))
         defer { free(resolved) }

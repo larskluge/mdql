@@ -15,8 +15,14 @@ public struct MarkdownRenderer {
         return render(markdown: markdown, title: title)
     }
 
-    public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
-        wrapInHTMLDocument(body: renderBody(markdown: markdown, interactive: interactive), title: title, showBackButton: showBackButton, interactive: interactive, appChrome: appChrome)
+    /// `checkboxesClickable` false, in interactive mode, draws the body's
+    /// checkboxes disabled while the page still listens for clicks: a live
+    /// update may bring clickable ones. `topInset` is how far the host's
+    /// titlebar reaches over the page.
+    public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false,
+                              checkboxesClickable: Bool = true, appChrome: Bool = false, topInset: CGFloat = 0) -> String {
+        wrapInHTMLDocument(body: renderBody(markdown: markdown, interactive: interactive && checkboxesClickable), title: title,
+                           showBackButton: showBackButton, interactive: interactive, appChrome: appChrome, topInset: topInset)
     }
 
     public static func renderBody(markdown: String, interactive: Bool = false) -> String {
@@ -297,16 +303,252 @@ public struct MarkdownRenderer {
     /// `on…=` attributes and its `javascript:` links stay inert, on first load
     /// and on live reload alike. `evaluateJavaScript` from Swift is not subject
     /// to it. Images and styles load as they would without a policy.
-    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
+    private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false,
+                                           appChrome: Bool = false, topInset: CGFloat = 0) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
         let nonce = makeNonce()
         let backButtonHTML = showBackButton ? """
-        <div id="mdql-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
+        <div id="mdql-back" class="mdql-glass"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
         """ : ""
-        let interactiveCheckboxJS = interactive ? """
+        return """
+        <!DOCTYPE html>
+        <html lang="en" style="--mdql-top: \(max(0, Double(topInset)))px">
+        <head>
+        <meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="script-src 'nonce-\(nonce)'; object-src 'none'; base-uri 'none'">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>\(escapedTitle)</title>
+        <style>
+        \(css)
+        </style>
+        <script nonce="\(nonce)">
+        document.addEventListener('DOMContentLoaded', function() {
+        \(pageScript)
+        \(interactive ? checkboxScript : "")
+        });
+        </script>
+        </head>
+        <body\(appChrome ? " class=\"mdql-app\"" : "")>
+        \(backButtonHTML)
+        <div id="mdql-version">\(escapeHTML(version))</div>
+        <article class="markdown-body">
+        \(body)
+        </article>
+        </body>
+        </html>
+        """
+    }
 
+    /// The page's own behavior: links, the back button, the notices on top
+    /// and the label at the bottom. Swift shows a notice with
+    /// `__mdqlNotice({id, kind, text, detail, lasting})` and takes it away
+    /// with `__mdqlDismissNotice(id)`; `__mdqlShowToast(text, icon)` puts
+    /// `text` in the label for a moment. All of them set text, never markup.
+    private static let pageScript = #"""
+            var back = document.getElementById('mdql-back');
+            if (back) back.addEventListener('click', function() {
+                window.webkit.messageHandlers.mdql.postMessage({action: 'goBack'});
+            });
+
+            function svg(shapes) {
+                return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+                    'stroke-linecap="round" stroke-linejoin="round">' + shapes + '</svg>';
+            }
+            var icons = {
+                failed: svg('<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+                    '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
+                refused: svg('<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>'),
+                waiting: '<span class="mdql-dot"></span>',
+                cleared: svg('<polyline points="20 6 9 17 4 12"/>'),
+                web: svg('<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>'),
+                note: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>' +
+                    '<line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>')
+            };
+
+            // An icon, then the text and, quieter, its detail after a `·`.
+            function fill(el, icon, text, detail) {
+                el.textContent = '';
+                if (icons[icon]) {
+                    var i = document.createElement('span');
+                    i.className = 'mdql-icon';
+                    i.innerHTML = icons[icon];
+                    el.appendChild(i);
+                }
+                var t = document.createElement('span');
+                t.className = 'mdql-text';
+                t.textContent = text;
+                if (detail) {
+                    var d = document.createElement('span');
+                    d.className = 'mdql-detail';
+                    d.textContent = ' · ' + detail;
+                    t.appendChild(d);
+                }
+                el.appendChild(t);
+            }
+
+            // Problems, on top. Lasting ones stay until Swift takes them away
+            // and come first; the others fade, unless the pointer holds them.
+            var notices = document.createElement('div');
+            notices.id = 'mdql-notices';
+            document.body.appendChild(notices);
+
+            // Gives the page the room the notices take, so that nothing in the
+            // document is under them at scroll top.
+            function makeRoom() {
+                var shown = Array.prototype.filter.call(notices.children, function(el) {
+                    return !el.classList.contains('mdql-leaving');
+                });
+                var room = 0;
+                if (shown.length) {
+                    room = parseFloat(getComputedStyle(notices).top) + 20 + 8 * (shown.length - 1);
+                    shown.forEach(function(el) { room += el.offsetHeight; });
+                }
+                document.body.style.setProperty('--mdql-notice-room', room + 'px');
+            }
+
+            function noticeNamed(id) {
+                return Array.prototype.find.call(notices.children, function(el) {
+                    return el.mdqlId === id && !el.classList.contains('mdql-leaving');
+                });
+            }
+
+            function dismiss(el) {
+                if (!el || el.classList.contains('mdql-leaving')) return;
+                clearTimeout(el.mdqlTimer);
+                el.classList.add('mdql-leaving');
+                makeRoom();
+                setTimeout(function() { el.remove(); makeRoom(); }, 200);
+            }
+
+            function countDown(el) {
+                clearTimeout(el.mdqlTimer);
+                if (el.mdqlFadesAfter) el.mdqlTimer = setTimeout(function() { dismiss(el); }, el.mdqlFadesAfter);
+            }
+
+            window.__mdqlNotice = function(notice) {
+                var el = noticeNamed(notice.id);
+                if (!el) {
+                    el = document.createElement('div');
+                    el.mdqlId = notice.id;
+                    el.setAttribute('role', 'status');
+                    el.addEventListener('mouseenter', function() { clearTimeout(el.mdqlTimer); });
+                    el.addEventListener('mouseleave', function() { countDown(el); });
+                }
+                var wasLasting = el.classList.contains('mdql-lasting');
+                el.className = 'mdql-notice mdql-glass mdql-' + notice.kind + (notice.lasting ? ' mdql-lasting' : '');
+                fill(el, notice.kind, notice.text, notice.detail);
+                var firstFading = Array.prototype.find.call(notices.children, function(other) {
+                    return other !== el && !other.classList.contains('mdql-lasting');
+                });
+                if (el.parentNode !== notices) {
+                    // A lasting one goes after the others that last, a fading one last.
+                    notices.insertBefore(el, notice.lasting ? firstFading || null : null);
+                } else if (notice.lasting !== wasLasting) {
+                    notices.insertBefore(el, firstFading || null);
+                }
+                el.mdqlFadesAfter = notice.lasting ? 0 : notice.kind === 'cleared' ? 2500 : 6000;
+                if (!el.matches(':hover')) countDown(el);
+                makeRoom();
+            };
+
+            window.__mdqlDismissNotice = function(id) { dismiss(noticeNamed(id)); };
+
+            // What is fine to miss, at the bottom: where a link goes, and
+            // that it is opening.
+            var label = document.createElement('div');
+            label.id = 'mdql-label';
+            label.className = 'mdql-glass';
+            document.body.appendChild(label);
+
+            function showLabel(icon, text, detail) {
+                fill(label, icon, text, detail);
+                label.classList.add('visible');
+            }
+
+            window.__mdqlShowToast = function(text, icon) {
+                showLabel(icon, text);
+                clearTimeout(label.mdqlTimer);
+                label.mdqlTimer = setTimeout(function() {
+                    label.mdqlTimer = null;
+                    label.classList.remove('visible');
+                }, 2000);
+            };
+
+            function isMdLink(href) {
+                if (!href) return false;
+                if (/^https?:/i.test(href)) return false;
+                return /\.(?:md|markdown)(#.*)?$/i.test(href);
+            }
+
+            function findLink(el) {
+                while (el && el.tagName !== 'A') el = el.parentElement;
+                return el;
+            }
+
+            // A web link's address as a reader would say it: no scheme, no
+            // trailing slash.
+            function address(href) {
+                try {
+                    var url = new URL(href);
+                    return (url.host + url.pathname + url.search + url.hash).replace(/\/$/, '');
+                } catch (e) {
+                    return href;
+                }
+            }
+
+            function noteName(href) {
+                var name = href.replace(/#.*$/, '').split('/').pop();
+                try { return decodeURIComponent(name); } catch (e) { return name; }
+            }
+
+            document.addEventListener('mouseover', function(e) {
+                var el = findLink(e.target);
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (isMdLink(href)) {
+                    showLabel('note', noteName(href), 'opens here');
+                } else if (/^https?:/i.test(el.href || href)) {
+                    showLabel('web', address(el.href || href));
+                } else {
+                    return;
+                }
+                clearTimeout(label.mdqlTimer);
+                label.mdqlTimer = null;
+            });
+
+            document.addEventListener('mouseout', function(e) {
+                var el = findLink(e.target);
+                if (el && !el.contains(e.relatedTarget) && !label.mdqlTimer) label.classList.remove('visible');
+            });
+
+            // Every link goes to Swift, which opens it or says why not: a web
+            // link in the browser, mailto: in Mail, a relative link in place
+            // when it is Markdown. Only a jump within the page, and the
+            // javascript: links the CSP keeps inert, are left alone.
+            document.addEventListener('click', function(e) {
+                var el = findLink(e.target);
+                if (!el) return;
+                var href = el.getAttribute('href') || '';
+                if (!href || href.charAt(0) === '#' || /^(about|javascript):/i.test(href)) return;
+                e.preventDefault();
+                if (/^https?:/i.test(href)) {
+                    var target = el.href || href;
+                    var host;
+                    try { host = new URL(target).host; } catch (err) { host = target; }
+                    window.__mdqlShowToast('Opening ' + host, 'web');
+                    window.webkit.messageHandlers.mdql.postMessage({action: "openURL", url: target});
+                } else if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+                    window.webkit.messageHandlers.mdql.postMessage({action: "openURL", url: href});
+                } else {
+                    window.webkit.messageHandlers.mdql.postMessage({action: "openMarkdown", url: href});
+                }
+            });
+    """#
+
+    /// Interactive pages only: a click on a checkbox asks Swift to save it.
+    private static let checkboxScript = #"""
             // By the time a click reaches this listener the box has already
             // flipped, so `checked` is the state asked for. Swift writes it to
             // the marker at `data-cb-offset`, or reverts the box if it cannot.
@@ -321,148 +563,12 @@ public struct MarkdownRenderer {
                 }
             });
 
-            window.__mdqlRevertCheckbox = function(offset) {
+            // Puts the box back as it was before a click asked for `checked`.
+            window.__mdqlRevertCheckbox = function(offset, checked) {
                 var el = document.querySelector('input[type="checkbox"][data-cb-offset="' + offset + '"]');
-                if (el) el.checked = !el.checked;
+                if (el) el.checked = !checked;
             };
-        """ : ""
-        return """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-        <meta charset="utf-8">
-        <meta http-equiv="Content-Security-Policy" content="script-src 'nonce-\(nonce)'; object-src 'none'; base-uri 'none'">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>\(escapedTitle)</title>
-        <style>
-        \(css)
-        #mdql-back {
-            position: fixed; top: 12px; left: 12px;
-            width: 28px; height: 28px;
-            display: flex; align-items: center; justify-content: center;
-            border-radius: 6px;
-            background: rgba(0,0,0,0.06);
-            color: #555;
-            cursor: pointer;
-            z-index: 9999;
-            transition: background 0.15s;
-        }
-        #mdql-back:hover { background: rgba(0,0,0,0.12); }
-        @media (prefers-color-scheme: dark) {
-            #mdql-back { background: rgba(255,255,255,0.1); color: #ccc; }
-            #mdql-back:hover { background: rgba(255,255,255,0.2); }
-        }
-        #mdql-status {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            padding: 4px 12px;
-            font: 12px/1.4 -apple-system, sans-serif;
-            background: rgba(0,0,0,0.08);
-            color: #444;
-            display: none;
-            z-index: 9999;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        #mdql-status.visible { display: block; }
-        @media (prefers-color-scheme: dark) {
-            #mdql-status { background: rgba(0,0,0,0.65); color: #ddd; }
-        }
-        </style>
-        <script nonce="\(nonce)">
-        document.addEventListener('DOMContentLoaded', function() {
-            var back = document.getElementById('mdql-back');
-            if (back) back.addEventListener('click', function() {
-                window.webkit.messageHandlers.mdql.postMessage({action: 'goBack'});
-            });
-
-            var toast = document.createElement('div');
-            toast.id = 'mdql-toast';
-            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);' +
-                'background:rgba(0,0,0,0.8);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;' +
-                'opacity:0;transition:opacity 0.2s,transform 0.2s;pointer-events:none;z-index:9999;' +
-                'max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            document.body.appendChild(toast);
-
-            window.__mdqlShowToast = function(url) {
-                toast.textContent = 'Opening: ' + url;
-                toast.style.opacity = '1';
-                toast.style.transform = 'translateX(-50%) translateY(0)';
-                clearTimeout(toast._t);
-                toast._t = setTimeout(function() {
-                    toast.style.opacity = '0';
-                    toast.style.transform = 'translateX(-50%) translateY(20px)';
-                }, 2000);
-            };
-
-            var statusBar = document.getElementById('mdql-status');
-
-            function isMdLink(href) {
-                if (!href) return false;
-                if (/^https?:/i.test(href)) return false;
-                return /\\.(?:md|markdown)(#.*)?$/i.test(href);
-            }
-
-            function findLink(el) {
-                while (el && el.tagName !== 'A') el = el.parentElement;
-                return el;
-            }
-
-            document.addEventListener('mouseover', function(e) {
-                var el = findLink(e.target);
-                if (!el) return;
-                var href = el.getAttribute('href') || '';
-                if (isMdLink(href)) {
-                    statusBar.textContent = '\u{1F4C4}  Open [' + href.split('/').pop().replace(/#.*$/, '') + '] in preview';
-                } else if (/^https?:/i.test(el.href || href)) {
-                    statusBar.textContent = '\u{1F310}  Opens in browser';
-                } else {
-                    return;
-                }
-                statusBar.classList.add('visible');
-            });
-
-            document.addEventListener('mouseout', function(e) {
-                var el = findLink(e.target);
-                if (el && !el.contains(e.relatedTarget)) statusBar.classList.remove('visible');
-            });
-
-            document.addEventListener('click', function(e) {
-                var el = findLink(e.target);
-                if (!el) return;
-                var href = el.getAttribute('href') || '';
-                if (isMdLink(href)) {
-                    e.preventDefault();
-                    window.webkit.messageHandlers.mdql.postMessage({
-                        action: "openMarkdown",
-                        url: href
-                    });
-                    return;
-                }
-                if (/^https?:/.test(el.href)) {
-                    e.preventDefault();
-                    window.__mdqlShowToast(el.href);
-                    window.webkit.messageHandlers.mdql.postMessage({
-                        action: "openURL",
-                        url: el.href
-                    });
-                }
-            });
-        \(interactiveCheckboxJS)
-        });
-        </script>
-        </head>
-        <body\(appChrome ? " class=\"mdql-app\"" : "")>
-        \(backButtonHTML)
-        <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
-        <div id="mdql-status"></div>
-        <article class="markdown-body">
-        \(body)
-        </article>
-        </body>
-        </html>
-        """
-    }
+    """#
 
     /// A fresh nonce for every page, so no document can know in advance the
     /// one that would let its script run.

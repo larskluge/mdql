@@ -1,6 +1,7 @@
 import Foundation
 
-/// What became of a request to set a task-list checkbox.
+/// What became of a request to set a task-list checkbox, as the XPC service
+/// replies it: a failure's reason travels beside it.
 @objc enum CheckboxToggleOutcome: Int {
     /// The marker now holds the state asked for.
     case toggled
@@ -9,6 +10,32 @@ import Foundation
     case stale
     /// The file could not be opened, read or written.
     case failed
+}
+
+/// What became of a request to set a task-list checkbox, and why not when it
+/// failed.
+enum CheckboxToggleResult: Equatable {
+    case toggled
+    case stale
+    case failed(PlainError)
+
+    /// The result an XPC reply carries: `outcome`, and `reason` when it failed.
+    init(outcome: CheckboxToggleOutcome, reason: String?) {
+        switch outcome {
+        case .toggled: self = .toggled
+        case .stale: self = .stale
+        case .failed: self = .failed(PlainError(reason ?? "the write failed"))
+        }
+    }
+
+    /// What an XPC reply carries of it.
+    var reply: (outcome: CheckboxToggleOutcome, reason: String?) {
+        switch self {
+        case .toggled: return (.toggled, nil)
+        case .stale: return (.stale, nil)
+        case .failed(let error): return (.failed, error.reason)
+        }
+    }
 }
 
 /// Sets a single GFM task-list checkbox marker in a file on disk.
@@ -28,16 +55,16 @@ enum CheckboxToggle {
     /// The file is read and written through one descriptor. Nothing is written
     /// unless that byte sits between `[` and `]` and holds the opposite of
     /// `checked`; anything else means the file is not what the page showed.
-    static func toggle(fileAt url: URL, offset: Int, checked: Bool) -> CheckboxToggleOutcome {
+    static func toggle(fileAt url: URL, offset: Int, checked: Bool) -> CheckboxToggleResult {
         let fd = open(url.path, O_RDWR | O_CLOEXEC)
-        guard fd >= 0 else { return .failed }
+        guard fd >= 0 else { return .failed(PlainError(errno: errno, reading: false)) }
         defer { close(fd) }
 
         let bytes: [UInt8]
         do {
             bytes = Array(try FileHandle(fileDescriptor: fd, closeOnDealloc: false).readToEnd() ?? Data())
         } catch {
-            return .failed
+            return .failed(PlainError(describing: error))
         }
         let position = offset + (bytes.starts(with: byteOrderMark) ? byteOrderMark.count : 0)
         guard offset >= 0, position >= 1, position + 1 < bytes.count,
@@ -53,6 +80,10 @@ enum CheckboxToggle {
         guard shown != checked else { return .stale }
 
         var marker = checked ? UInt8(ascii: "x") : UInt8(ascii: " ")
-        return pwrite(fd, &marker, 1, off_t(position)) == 1 ? .toggled : .failed
+        switch pwrite(fd, &marker, 1, off_t(position)) {
+        case 1: return .toggled
+        case -1: return .failed(PlainError(errno: errno, reading: false))
+        default: return .failed(PlainError("the write didn't complete"))
+        }
     }
 }

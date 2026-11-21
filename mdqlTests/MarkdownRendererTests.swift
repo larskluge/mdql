@@ -9,15 +9,6 @@ let tagfilterTags = ["title", "textarea", "style", "xmp", "iframe", "noembed", "
 
 final class MarkdownRendererTests: XCTestCase {
 
-    private func fixtureURL(_ name: String) -> URL {
-        let bundle = Bundle(for: type(of: self))
-        return bundle.url(forResource: name, withExtension: "md", subdirectory: "Fixtures")
-            ?? URL(fileURLWithPath: #file)
-                .deletingLastPathComponent()
-                .appendingPathComponent("Fixtures")
-                .appendingPathComponent("\(name).md")
-    }
-
     // MARK: - Basic Markdown
 
     func testRenderBasicMarkdown() {

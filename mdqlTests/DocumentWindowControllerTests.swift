@@ -1,5 +1,6 @@
 import XCTest
 import Cocoa
+import WebKit
 
 final class DocumentWindowControllerTests: XCTestCase {
 
@@ -62,6 +63,34 @@ final class DocumentWindowControllerTests: XCTestCase {
         XCTAssertEqual(controller.window?.title, "two.md")
         XCTAssertEqual(controller.window?.representedURL?.resolvingSymlinksInPath(),
                        second.resolvingSymlinksInPath())
+    }
+
+    func testTheBackButtonAndNoticesSitBelowTheTitlebar() throws {
+        // The back button sat at 12 px from the top, under the traffic lights.
+        let dir = try makeTemporaryDirectory()
+        let file = try makeMarkdownFile(named: "one.md", in: dir)
+        try "# Two\n".write(to: dir.appendingPathComponent("two.md"), atomically: true, encoding: .utf8)
+        try "[Two](two.md)\n".write(to: file, atomically: true, encoding: .utf8)
+        let controller = DocumentWindowController()
+        addTeardownBlock { controller.controller.teardown() }
+        try load(file, into: controller)
+        let window = try XCTUnwrap(controller.window)
+        let page = controller.controller.webView
+        try waitUntilLoaded(page)
+
+        let titlebar = DocumentWindowController.titlebarHeight(of: window)
+        XCTAssertGreaterThan(titlebar, 0, "The window's titlebar reaches over its full-size content")
+        XCTAssertEqual(controller.controller.topInset, titlebar)
+
+        try evaluate("document.querySelector('a').click(); true", in: page)
+        try waitUntil("!!document.getElementById('mdql-back') && document.readyState === 'complete'", in: page)
+        let backTop = try XCTUnwrap(evaluate("document.getElementById('mdql-back').getBoundingClientRect().top", in: page) as? Double)
+        XCTAssertEqual(backTop, Double(titlebar) + 20, accuracy: 0.5, "20 px below the titlebar's bottom edge")
+
+        let close = try XCTUnwrap(window.standardWindowButton(.closeButton))
+        let closeInWindow = close.convert(close.bounds, to: nil)
+        XCTAssertGreaterThan(backTop, Double(window.frame.height - closeInWindow.minY),
+                             "The back button must sit below the traffic lights, not under them")
     }
 
     func testDocumentWindowControllerDeallocatesCleanly() {

@@ -8,7 +8,8 @@ import os
 /// not open or read, and the unsandboxed XPC service checks every request
 /// again, as the boundary.
 ///
-/// A refused action does nothing beyond a line in this log:
+/// A refused action does nothing but say so: a grey notice on the page, in
+/// `Refusal.plainReason(naming:)`'s words, and a line in this log:
 /// `log show --predicate 'subsystem == "com.mdql.app" && category == "access"'`.
 enum AccessPolicy {
 
@@ -19,16 +20,42 @@ enum AccessPolicy {
     static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
 
     struct Refusal: Error, CustomStringConvertible {
+        enum Kind: Equatable {
+            case noScheme
+            case scheme(String)
+            case outsideFolder
+            case notMarkdown
+            case notRegularFile
+            /// The path does not resolve: the file is missing, or mdql may not
+            /// look at it. Not a refusal on purpose, but a file it cannot read.
+            case unresolvable(errno: Int32)
+        }
+
+        let kind: Kind
+        /// Why, for the log: the real paths involved.
         let description: String
+
+        /// Why, in plain words for a notice, naming the link or file `name`
+        /// as the document wrote it.
+        func plainReason(naming name: String) -> String {
+            switch kind {
+            case .noScheme: return "\(name) isn't a web address"
+            case .scheme(let scheme): return "\(scheme): links are off in mdql"
+            case .outsideFolder: return "\(name) is outside this folder"
+            case .notMarkdown: return "\(name) isn't a Markdown file"
+            case .notRegularFile: return "\(name) isn't a regular file"
+            case .unresolvable(let code): return PlainError(errno: code, reading: true).reason
+            }
+        }
     }
 
     /// Throws why `url` may not be opened, if it may not.
     static func checkOpening(_ url: URL) throws {
         guard let scheme = url.scheme?.lowercased() else {
-            throw Refusal(description: "it has no scheme")
+            throw Refusal(kind: .noScheme, description: "it has no scheme")
         }
         guard allowedSchemes.contains(scheme) else {
-            throw Refusal(description: "\(scheme): is not one of http, https, mailto")
+            throw Refusal(kind: .scheme(scheme), description: "\(scheme): is not one of http, https, mailto")
         }
     }
 
@@ -55,21 +82,22 @@ enum AccessPolicy {
 
         let folder = try realPath(document.deletingLastPathComponent().path)
         guard path.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/") else {
-            throw Refusal(description: "\(path) is outside \(folder), the previewed document's folder")
+            throw Refusal(kind: .outsideFolder, description: "\(path) is outside \(folder), the previewed document's folder")
         }
         guard ["md", "markdown"].contains((path as NSString).pathExtension.lowercased()) else {
-            throw Refusal(description: "\(path) is not a .md or .markdown file")
+            throw Refusal(kind: .notMarkdown, description: "\(path) is not a .md or .markdown file")
         }
         var info = stat()
         guard stat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
-            throw Refusal(description: "\(path) is not a regular file")
+            throw Refusal(kind: .notRegularFile, description: "\(path) is not a regular file")
         }
         return URL(fileURLWithPath: path)
     }
 
     private static func realPath(_ path: String) throws -> String {
         guard let resolved = realpath(path, nil) else {
-            throw Refusal(description: "\(path): \(String(cString: strerror(errno)))")
+            let code = errno
+            throw Refusal(kind: .unresolvable(errno: code), description: "\(path): \(String(cString: strerror(code)))")
         }
         defer { free(resolved) }
         return String(cString: resolved)

@@ -53,6 +53,31 @@ final class OpenURLServiceTests: XCTestCase {
         }
     }
 
+    func testReadFileDecodesAFileThatIsNotUTF8() throws {
+        let folder = try makeFolder()
+        let document = try write("# One", to: folder.appendingPathComponent("one.md"))
+        let sibling = folder.appendingPathComponent("menu.md")
+        try Data(contentsOf: fixtureURL("windows-1252")).write(to: sibling)
+
+        var reply: (String?, MarkdownEncoding)?
+        let done = expectation(description: "readFile replied")
+        OpenURLService().readFile(at: sibling.path, previewing: document.path) { text, encoding, _ in
+            reply = (text, encoding)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        XCTAssertEqual(reply?.1, .windowsLatin1)
+        XCTAssertTrue(reply?.0?.contains("crème brûlée costs 5 €") == true, reply?.0 ?? "nil")
+    }
+
+    func testReadFileRefusalsSayWhyInPlainWords() throws {
+        let root = try makeFolder()
+        let document = try write("# One", to: root.appendingPathComponent("docs/one.md"))
+        let outside = try write("secret", to: root.appendingPathComponent("private.md"))
+        XCTAssertEqual(read(outside, previewing: document).1, "private.md is outside this folder")
+        XCTAssertEqual(read(root.appendingPathComponent("docs/gone.md"), previewing: document).1, "file not found")
+    }
+
     // MARK: - toggleCheckbox
 
     func testToggleCheckboxWritesThePreviewedDocument() throws {
@@ -61,6 +86,23 @@ final class OpenURLServiceTests: XCTestCase {
 
         XCTAssertTrue(try toggle(document, previewing: document))
         XCTAssertEqual(try String(contentsOf: document, encoding: .utf8), "- [x] task\n")
+    }
+
+    func testAToggleThatFailsSaysWhy() throws {
+        let folder = try makeFolder()
+        let document = try write("- [ ] task\n", to: folder.appendingPathComponent("one.md"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: document.path)
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: document.path) }
+
+        var reply: (CheckboxToggleOutcome, String?)?
+        let done = expectation(description: "toggleCheckbox replied")
+        OpenURLService().toggleCheckbox(at: document.path, offset: 3, checked: true, previewing: document.path) { outcome, reason in
+            reply = (outcome, reason)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
+        XCTAssertEqual(reply?.0, .failed)
+        XCTAssertEqual(reply?.1, "the file is read-only")
     }
 
     func testToggleCheckboxRefusesAnotherFile() throws {
@@ -83,7 +125,7 @@ final class OpenURLServiceTests: XCTestCase {
     private func read(_ url: URL, previewing document: URL) -> (String?, String?) {
         var result: (String?, String?) = (nil, nil)
         let done = expectation(description: "readFile replied")
-        OpenURLService().readFile(at: url.path, previewing: document.path) { content, error in
+        OpenURLService().readFile(at: url.path, previewing: document.path) { content, _, error in
             result = (content, error)
             done.fulfill()
         }
@@ -94,7 +136,7 @@ final class OpenURLServiceTests: XCTestCase {
     /// Checks the task `url` starts with, `- [ ] task`, whose marker is byte 3.
     private func toggle(_ url: URL, previewing document: URL) throws -> Bool {
         try reply { done in
-            OpenURLService().toggleCheckbox(at: url.path, offset: 3, checked: true, previewing: document.path) { done($0 == .toggled) }
+            OpenURLService().toggleCheckbox(at: url.path, offset: 3, checked: true, previewing: document.path) { outcome, _ in done(outcome == .toggled) }
         }
     }
 
