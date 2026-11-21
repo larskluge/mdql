@@ -547,7 +547,8 @@ final class PreviewControllerTests: XCTestCase {
     /// Test-only hook, injected at document start: traps the global mermaid
     /// assignment and wraps render so that, while __mdqlTestHold is set,
     /// renders wait for __mdqlTestRelease(). Lets tests keep renders in flight
-    /// across a swap instead of racing them.
+    /// across a swap instead of racing them. While __mdqlTestFail holds a
+    /// message, renders fail with it.
     private static let renderGateScript = """
         (function() {
             var held = [];
@@ -565,6 +566,7 @@ final class PreviewControllerTests: XCTestCase {
                     var render = value.render;
                     value.render = function() {
                         var self = this, args = arguments;
+                        if (window.__mdqlTestFail) return Promise.reject(new Error(window.__mdqlTestFail));
                         if (!window.__mdqlTestHold) return render.apply(self, args);
                         return new Promise(function(resume) { held.push(resume); }).then(function() { return render.apply(self, args); });
                     };
@@ -747,6 +749,32 @@ final class PreviewControllerTests: XCTestCase {
         pollJS(controller.webView, "Array.from(document.querySelectorAll('.markdown-body .mdql-mermaid')).map(function(d) { return d.getAttribute('data-mdql-theme'); })", "Final themes") { result in
             (result as? [String]) == ["dark", "dark"]
         }
+    }
+
+    func testFailedRedrawForAnAppearanceChangeSaysWhy() throws {
+        // A diagram drawn, then redrawn for dark mode, and the redraw fails: the
+        // old drawing stays, and a note under it says why, as for a first
+        // render that fails.
+        let controller = try loadDiagrams("# Doc\n\n\(Self.flowAB)", diagrams: 1)
+        pollJS(controller.webView, "window.__mdqlTestFail = 'no room for the arrows'", "Fail renders") { $0 as? String == "no room for the arrows" }
+        controller.webView.appearance = NSAppearance(named: .darkAqua)
+        pollJS(controller.webView, """
+            (function() {
+                var note = document.querySelector('.markdown-body .mdql-mermaid + .mdql-mermaid-error-msg');
+                return [note ? note.textContent : '', document.querySelectorAll('.markdown-body .mdql-mermaid svg').length];
+            })()
+            """, "Error under the diagram") { result in
+            guard let pair = result as? [Any], let text = pair.first as? String else { return false }
+            return text == "Diagram error: no room for the arrows" && pair.last as? Int == 1
+        }
+
+        // The next redraw that works takes the note away.
+        pollJS(controller.webView, "window.__mdqlTestFail = ''", "Renders work again") { $0 as? String == "" }
+        controller.webView.appearance = NSAppearance(named: .aqua)
+        pollJS(controller.webView, """
+            [document.querySelectorAll('.markdown-body .mdql-mermaid-error-msg, .markdown-body .mdql-mermaid-error').length,
+             (document.querySelector('.markdown-body .mdql-mermaid') || {}).getAttribute('data-mdql-theme')]
+            """, "Note gone after a redraw that works") { ($0 as? [Any])?.first as? Int == 0 && ($0 as? [Any])?.last as? String == "default" }
     }
 
     func testReloadWhileFirstRendersInFlightRendersEachFenceOnce() throws {

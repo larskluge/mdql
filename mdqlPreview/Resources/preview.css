@@ -178,8 +178,9 @@ img {
     height: auto;
 }
 
-/* A fence that failed to render keeps its source visible; mark it and say why */
-pre.mdql-mermaid-error {
+/* A fence that failed to render keeps its source, a diagram whose redraw
+   failed its old drawing; mark either and say why */
+.mdql-mermaid-error {
     border: 1px solid #c0392b;
 }
 

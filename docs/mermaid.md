@@ -11,7 +11,7 @@ A ` ```mermaid ` fence renders as a diagram, in Quick Look and in the viewer. Th
 
 ## In the page
 
-`glue` starts on DOMContentLoaded, or at once if the script arrives later. It renders each fence with `securityLevel: 'strict'` (which a `%%{init}%%` directive cannot loosen) in the theme the system's appearance asks for, and redraws on an appearance change. A fence that fails keeps its source, marked, with a note saying why. Live updates go through `__mdqlSwapBody`, which puts unchanged diagrams back rather than drawing them again ([live-updates.md](live-updates.md)).
+`glue` starts on DOMContentLoaded, or at once if the script arrives later. It renders each fence with `securityLevel: 'strict'` (which a `%%{init}%%` directive cannot loosen) in the theme the system's appearance asks for, and redraws on an appearance change. A fence that fails keeps its source, and a redraw that fails keeps the old drawing, marked either way, with a note under it saying why; the note goes once the diagram is drawn right. Live updates go through `__mdqlSwapBody`, which puts unchanged diagrams back rather than drawing them again ([live-updates.md](live-updates.md)).
 
 ## Updating Mermaid
 

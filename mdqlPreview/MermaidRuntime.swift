@@ -139,6 +139,26 @@ enum MermaidRuntime {
             // drawn in the current theme. mermaid queues renders, so one
             // requested before a theme change may run after it: re-render
             // when the theme moved while this one was in flight.
+            // Marks target, a fence's <pre> or a drawn diagram whose redraw
+            // failed, and says why in a note under it. A diagram keeps its old
+            // drawing; a fence keeps its source.
+            function showFailure(target, err) {
+                if (!target.isConnected) return;
+                target.classList.add('mdql-mermaid-error');
+                var note = target.nextElementSibling;
+                if (!note || !note.classList.contains('mdql-mermaid-error-msg')) {
+                    note = document.createElement('div');
+                    note.className = 'mdql-mermaid-error-msg';
+                    target.after(note);
+                }
+                note.textContent = 'Diagram error: ' + (err && err.message || err);
+            }
+            // Takes back what showFailure did: the drawing is current again.
+            function clearFailure(target) {
+                target.classList.remove('mdql-mermaid-error');
+                var note = target.nextElementSibling;
+                if (note && note.classList.contains('mdql-mermaid-error-msg')) note.remove();
+            }
             function renderMermaid(target, sourceText) {
                 var gen = themeGen;
                 var theme = mermaidTheme;
@@ -151,9 +171,10 @@ enum MermaidRuntime {
                     if (result && typeof result.bindFunctions === 'function') {
                         result.bindFunctions(div);
                     }
+                    clearFailure(target);
                     target.replaceWith(div);
                     if (gen !== themeGen && div.isConnected) {
-                        renderMermaid(div, sourceText).catch(function() {});
+                        renderMermaid(div, sourceText).catch(function(err) { showFailure(div, err); });
                     }
                 });
             }
@@ -180,13 +201,7 @@ enum MermaidRuntime {
                         return;
                     }
                     pre.setAttribute('data-mdql-mermaid', '1');
-                    renders.push(renderMermaid(pre, sourceText).catch(function(err) {
-                        pre.classList.add('mdql-mermaid-error');
-                        var note = document.createElement('div');
-                        note.className = 'mdql-mermaid-error-msg';
-                        note.textContent = 'Diagram error: ' + (err && err.message || err);
-                        pre.after(note);
-                    }));
+                    renders.push(renderMermaid(pre, sourceText).catch(function(err) { showFailure(pre, err); }));
                 });
                 return Promise.all(renders);
             }
@@ -218,8 +233,9 @@ enum MermaidRuntime {
                     // A swap may already have synced the theme and rendered
                     // some wrappers in it; only the stale ones need redrawing.
                     document.querySelectorAll('.markdown-body .mdql-mermaid[data-mdql-source]').forEach(function(div) {
-                        if (div.getAttribute('data-mdql-theme') === mermaidTheme) return;
-                        renderMermaid(div, div.getAttribute('data-mdql-source')).catch(function() {});
+                        // One whose redraw failed is right again in the theme it was drawn in.
+                        if (div.getAttribute('data-mdql-theme') === mermaidTheme) { clearFailure(div); return; }
+                        renderMermaid(div, div.getAttribute('data-mdql-source')).catch(function(err) { showFailure(div, err); });
                     });
                 });
                 window.__mdqlDiagramsSettled = renderDiagrams();
