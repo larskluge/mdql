@@ -1,201 +1,188 @@
-# Cutting a release
+# Versions and releases
 
-One app ships out of this tree, and five commands are the whole process — three
-make targets, with the review and the push in between. There is no release
-workflow and no update mechanism: a release is a zip on the GitHub releases page,
-and everything that produces it runs on this Mac.
+mdql's version is never bumped and never stored: every build computes it from
+git history, so whatever gets installed already shows the right number. A
+*release* — a notarized zip on the GitHub releases page — is a separate thing,
+cut only when Lars asks for one. There is no release workflow and no update
+mechanism; everything that produces a release runs on this Mac:
 
 ```bash
-make version                          # bump, changelog, commit, tag — all local
-git show                              # the review
+make release-tag-dry                  # the CHANGELOG section and tag it would write
+make release-tag                      # write them: one commit, one annotated tag — local only
 git push origin main --follow-tags    # main, and the annotated tag rides along
 make dist                             # build, sign, notarize, staple, zip
 make release                          # publish it
 ```
 
-`--follow-tags` carries annotated tags and silently skips lightweight ones, which
-is why `make version` writes `git tag -a`. With a lightweight tag that push would
-exit 0 with the tag still sitting local, and `make release` would refuse a step
-later with "not on origin", pointing back at a push that looked like it worked.
+## The version
 
-## The first release
+`python3 scripts/version.py` prints it, `--build` the build number, and
+`--explain` how history reads: the baseline, then each commit with the version
+it leaves behind.
 
-`v0.1.0` was tagged by hand, and had to be. `make version` only ever moves the
-version *forward* — it reads the number the project declares and bumps it — so no
-run of it can produce the number already in the pbxproj. The bootstrap is one tag
-on the commit that lands this tooling, and then the ordinary steps:
+- **Baseline:** the highest `vX.Y.Z` tag reachable from `HEAD` — highest by
+  version, so `v0.10.0` beats `v0.9.0`, and a tag on a branch never merged is no
+  baseline. A tag that names no version (`vNightly`, `v0.3.0-rc1`) is skipped.
+- **After it,** each non-merge commit, oldest first, by its subject prefix:
+
+  | | |
+  |---|---|
+  | `feat` | bumps the minor and zeroes the patch |
+  | `fix`, `perf` | bumps the patch |
+  | an unprefixed subject, or a type not listed here | bumps the patch: it is still a change somebody made |
+  | `chore`, `docs`, `ci`, `test`, `build`, `refactor`, `style` | nothing |
+
+  Order matters: on 0.2.6, `feat` then `fix` reads 0.3.1, and `fix` then `feat`
+  reads 0.3.0. Merge commits are skipped: `Merge pull request #14 from …` carries
+  no prefix and would add a patch on top of the commits it brings in, which are
+  counted already.
+- **The major** comes only from a tag Lars asks for: "make it 1.0" → an agent
+  puts `git tag -a v1.0.0 -m 1.0.0` on `main`'s HEAD and pushes it
+  (`git push origin v1.0.0`), or cuts that release with `--major` (below).
+  Nothing infers one: a `!` after the type or a `BREAKING CHANGE:` footer reads
+  as the plain type.
+- **The build number** is `git rev-list --count HEAD`, merges included. It is
+  `CFBundleVersion`, and macOS reads a build number that went down as a
+  downgrade.
+
+AGENTS.md's prefix rule is what keeps the number honest: every subject starts
+with the prefix its change deserves.
+
+**Where it starts.** `v0.2.6`, an annotated tag on `a5a174a` (the last product
+commit of 2026-11-21), is the baseline. Most subjects before it carry no prefix,
+so counting from `v0.1.0` would read nearly every one as a patch. By meaning, the
+history since 0.1.0 reads 0.2.6 — the ⌘H feature 0.2.0, the install fix 0.2.1,
+five fixes on 2026-11-21 — and Lars agreed to tag that. `v0.2.6` is a version,
+not a release: it has no `CHANGELOG.md` section and no download.
+
+**What it refuses.** A clone with no reachable `vX.Y.Z` tag, and a shallow clone,
+whose commit count would be too low. Either fails the build, naming the git
+command that fixes it; CI checks out with `fetch-depth: 0` for that reason.
+
+## How a build gets it
+
+`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` appear nowhere in
+`mdql.xcodeproj`, and none of the three `Info.plist`s names a version. Instead:
+
+- **`mdql-version`**, an aggregate target, runs `Compute version`
+  (`scripts/version.py --write`) on every build, into
+  `$(BUILT_PRODUCTS_DIR)/mdql-version.stamp`: the version, the build number and
+  the badge, one per line.
+- **mdql-open-url, mdqlPreview and mdql** each depend on it and carry a
+  `Stamp version` phase (`scripts/stamp-version.sh`) that writes
+  `CFBundleShortVersionString` and `CFBundleVersion` into the bundle's own built
+  `Info.plist` before Xcode signs it. mdqlPreview's also writes the badge into
+  its `version.txt`.
+
+One computation per build is the point. **macOS refuses to load an app extension
+whose `CFBundleVersion` disagrees with its containing app's**, and mdql ships two
+pieces of nested code inside the app — `mdqlPreview.appex`, and the
+`com.mdql.app.open-url.xpc` service inside that. Three bundles each asking git
+would disagree whenever a commit landed mid-build, and everything would stay
+green while it happened: the project builds, the tests pass, and the preview
+stops appearing. Read from one stamp file, they cannot.
+
+The app's `Stamp version` runs after **Embed Foundation Extensions**, not before
+it: Xcode processes the app's `Info.plist` only once the appex is embedded, so a
+stamp ahead of the embed is a dependency cycle and the build fails.
+
+Every build takes this one path — Xcode's own Run, `make install`, `make dist`,
+CI — and nothing passes a version in from outside. The two that ship check what
+they built: `make install` runs `scripts/version.py --check
+/Applications/mdql.app` once it has installed, and `make dist` runs it on the
+signed bundle. All three `Info.plist`s must carry the computed version and build
+number, and `version.txt` must read `<version> (<commit>)`. The static side is in
+`make version-test`: `ProjectTests` in `scripts/test_version.py` read this
+repository's own pbxproj and fail on a stored version, an `Info.plist` with one
+of its own, or a bundle target missing its dependency or its stamp phase.
+
+**The badge.** `version.txt` reads `0.2.7 (a1b2c3d)`, or `0.2.7 (a1b2c3d-dirty)`
+when tracked files had uncommitted changes. `MarkdownRenderer` draws it in the
+corner of every preview, which is how to tell which build Finder is actually
+running, and `make release` reads it back out of the zip, the only thing tying a
+published artifact to the commit it was built from.
+
+`make print-version` prints the version `make dist` names its zip after. The
+Makefile asks `scripts/version.py` once per run, so the zip's name, the bundle
+check and the tag cannot disagree because a commit landed between two reads.
+
+`make version-test` is the suite of all of it — `scripts/test_version.py`,
+`scripts/test_release_tag.py` and `scripts/test_changelog_section.py`, stdlib
+`unittest` against throwaway git repositories, no pytest to install — and it runs
+the suites of `developer-id-identity.sh` and `install.sh` with them. It runs first
+in `make test`, and first in CI, because it needs nothing and takes seconds.
+
+## Cutting a release
+
+Only when Lars asks for one.
 
 ```bash
-git tag -a v0.1.0 -m 0.1.0            # on the commit that adds versioning
-git push origin main --follow-tags
-make dist
-make release
+make release-tag-dry     # what it would write
+make release-tag         # write it
 ```
 
-`CHANGELOG.md`'s 0.1.0 section is hand-written for the same reason. Its *heading*
-is the shape every generated release uses — `## 0.1.0 — 2026-08-20`, the same
-line `render_release` would have written, down to the em dash — so the file reads
-as one sequence rather than a hand-written entry followed by machine-written
-ones, and `scripts/changelog-section.py` finds it the way it finds any other. Its
-*body* is not, and cannot be: `render_release` emits a heading with `###` groups
-under it, or a heading with the one sentence a deliberately empty release gets,
-and never a paragraph of prose above the groups — which is what a bootstrap note
-is. This happens exactly once: with `v0.1.0` in place there is a tag to read the
-commits from, and every release after it goes through `make version`.
+It takes the version `HEAD` computes, writes its `CHANGELOG.md` section, commits
+that file alone as `chore(release): <version>`, and puts the annotated tag
+`v<version>` on that commit. `chore` is a quiet type, so the commit leaves the
+computed version where it was, and the tag sits on the commit `make dist` builds.
 
-## The bump
-
-```bash
-make version-dry     # what it would do
-make version         # do it
-```
-
-It reads every non-merge commit since the last `v*` tag — every non-merge commit
-in the repository, the first time — and takes one thing from each: what kind of
-change it is, from the subject prefix. The log is `--no-merges` because
-`Merge pull request #14 from …` carries no prefix: left in, it lands in the
-changelog as an **Other** entry, and it can lift a batch that was all `docs` and
-`chore` out of "nothing to release" into a release with nothing behind it. The
-build number is the one count that does include merges; see *Where the number
-lives*.
+The section lists the commits since the **previous release** — the newest section
+already in `CHANGELOG.md`, read from its tag — rather than since the newest tag:
+`v0.2.6`, or a major Lars had tagged, is a version and not a release, so the
+release after it still lists everything since the one before. Each commit goes
+under the heading its prefix gives it:
 
 | | |
 |---|---|
-| `feat` | a minor, listed under **Added** |
-| `fix`, `perf` | a patch, under **Fixed** |
-| `refactor`, `chore`, `build`, `test`, `docs`, `ci`, `style` | nothing; left out of the changelog entirely |
-| `!` on the type, or a `BREAKING CHANGE:` footer | a major, under **Changed** |
-| anything else | a patch, under **Other** |
+| `feat` | **Added** |
+| `fix`, `perf` | **Fixed** |
+| anything else that moved the version | **Other** |
+| the quiet types | left out |
 
-That last row is not a corner case here. 21 of the 69 commits behind 0.1.0 carry
-a conventional prefix and 48 are plain sentences, so **Other** is where most of
-a release's history lands — which is the point of the rule. A subject nobody
-prefixed is still a change somebody made, and dropping it would leave the
-changelog describing a third of the work.
-
-The bump is the highest level in the batch, so one `feat` makes the whole batch
-a minor. A batch of only fixes is a patch, and a batch of only `docs` and `ci`
-is **no release at all** — it says so and writes nothing.
-
-### Forcing a level
+**It pushes nothing.** The run stops at a local commit and tag. If the commit or
+the tag fails (a hook refuses it, a signer is missing), it undoes what it wrote,
+so a rerun starts clean. `git show` is the review, and the remedy for a miscall is
 
 ```bash
-make version VERSION_ARGS='--level major'
+git reset --hard HEAD~1 && git tag -d v0.2.7
 ```
 
-`--level` takes `major`, `minor`, `patch` or `none` and overrides whatever the
-commits said. The only major a batch infers for itself is one a commit *declared*
-— `!` on the type, or a `BREAKING CHANGE:` footer, the row in the table above.
-**Nothing else is ever read as a major**, so the 1.0 that follows a long run of
-`feat`s is a thing you type.
-`--level patch` on a batch that classifies as nothing is the other use: a
-deliberate throwaway release, which is how the signing and notarization path
-gets exercised end to end without waiting for real work. Its changelog section
-says it was cut deliberately, so the number that moved for no listed reason is
-not a mystery later.
+Both halves: left behind, `v0.2.7` names a discarded commit, and the next
+`make release-tag` refuses the version as already tagged.
 
-### What it writes, and how to undo it
+It refuses before writing anything:
 
-`mdql.xcodeproj/project.pbxproj` (both project-level settings) and
-`CHANGELOG.md` — then one commit, `chore(release): 0.2.0`, and one annotated tag,
-`v0.2.0`.
+- a `HEAD` that is not on `main`, detached included — `make release-tag-dry` too,
+  so a dry run never shows a plan the real run refuses: a tag cut on a branch names a
+  commit the squash-merge then discards, and `make release` would refuse it only
+  after a build and a notarization round trip;
+- a `CHANGELOG.md` git reports as modified, staged or untracked, or any other
+  uncommitted change to a tracked file: a release is cut from a clean tree, as
+  `make dist` requires anyway;
+- a version whose tag already exists. Nothing — no `fix`, `feat` or unprefixed
+  commit — has moved the version since that tag, so there is nothing new to
+  release; the next such commit to land moves it;
+- a newest `CHANGELOG.md` section with no tag, since that tag is where the
+  commits are read from.
 
-**It pushes nothing.** Automatic and unreviewed are not the same thing: the run
-stops at a local commit, so `git show` is a review of something that has gone
-nowhere, and the changelog it wrote *is* the evidence — every commit listed under
-the heading it was classified into. A miscall is visible there, and the remedy is
+**A major as a release.** `make release-tag RELEASE_ARGS='--major 1'` cuts the
+release as 1.0.0: the section, the commit, and `v1.0.0` on it. It is the
+"make it 1.0" tag put on the release's own commit, and from then on every build
+computes from it. A major that would not move is refused.
 
-```bash
-git reset --hard HEAD~1 && git tag -d v0.2.0
-```
+The tag is annotated because `git push origin main --follow-tags` carries
+annotated tags and silently skips lightweight ones: with a lightweight one the
+push would exit 0 with the tag still local, and `make release` would refuse a
+step later with "not on origin".
 
-Both halves matter, and skipping the `git tag -d` half is quiet rather than
-loud: `v0.2.0` is left pointing at a commit on no branch, `v0.2.0..HEAD` reads as
-no commits at all, and every later run would report "nothing to release (0.1.0
-stands)" and exit 0. The next `make version` refuses instead — it names both
-numbers, says a skipped `git tag -d` is the likely cause, and prints the command
-— but that refusal is the second line of defence, not the plan.
+### The first release
 
-It refuses to run when `git status` reports `project.pbxproj` or `CHANGELOG.md` as
-modified, staged **or untracked**, and it names which: an untracked `CHANGELOG.md`
-is not an edit anybody made, so calling it one sends the reader hunting for a
-change that does not exist — while `git add` would sweep the whole file into the
-release commit just the same. It stages *and commits* by explicit pathspec rather
-than `git add -A`: `~/code/mdql` is a shared checkout worked in by more than one
-session, and a release commit must not sweep up somebody else's work in progress.
-Staging alone was not enough — a bare `git commit -m …` commits the whole index,
-so whatever another session had staged rode along and the tag pointed at it. The
-pathspec on the commit, which is `--only` semantics, is what holds it to those
-two files.
-
-It also refuses a tag name that already exists, before writing anything: a
-release commit that failed to get its tag is one nothing downstream — `make
-dist`, `make release`, the changelog's own numbering — can find. That refusal and
-the stale-tag one both fire under `--dry-run` too, so `make version-dry` is not
-always exit 0. It is the honest answer: a dry run that printed a plan the real
-run would then refuse is worse than no dry run.
-
-## Where the number lives
-
-Two build settings, `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, declared
-at **project** level — in the two configurations of the build configuration list
-belonging to the `mdql` project — so all five targets inherit one number and
-none of them declares its own. The three bundles that ship inside `mdql.app`
-each pick it up the same way: `mdql/Info.plist`, `mdqlPreview/Info.plist` and
-`mdql-open-url/Info.plist` all give `CFBundleShortVersionString` as
-`$(MARKETING_VERSION)` and `CFBundleVersion` as `$(CURRENT_PROJECT_VERSION)`.
-
-Project level is not tidiness. **macOS refuses to load an app extension whose
-`CFBundleVersion` disagrees with its containing app's**, and mdql ships two
-pieces of nested code inside the app — `mdqlPreview.appex`, and the
-`com.mdql.app.open-url.xpc` service inside that. A target-level override on any
-one of them lets the three numbers drift apart, and everything stays green while
-it happens: the project builds, the tests pass, and the preview stops appearing
-on the machine it is installed on.
-
-So `scripts/version.py` refuses to run when the shape breaks — a third
-occurrence of either setting, only one, or two that disagree — and each refusal
-names the file, the lines, and what would have shipped. CI runs that check on
-every pull request and every owl run on `main`: `make version-test` is `.github/workflows/ci.yml`'s
-first step, and it carries `test_the_repositorys_own_pbxproj_is_sound`, which
-reads this repository's actual pbxproj rather than a fixture. A change that adds
-a target-level override fails there in milliseconds, rather than at the next
-release.
-
-`mdql.xcodeproj` is hand-maintained. There is no `project.yml` and no xcodegen in
-this repository, so the pbxproj *is* the source and `make version` edits it in
-place, rewriting four values and nothing else.
-
-The build number is `git rev-list --count HEAD` at bump time — every commit,
-merges included, which is where it parts company with the changelog's
-`--no-merges` log. It becomes `CFBundleVersion`, and macOS reads a build number
-that went down as a downgrade, so the count that never drops is the right one to
-write. It only moves when the version moves.
-
-`make print-version` prints what the tree currently declares — the same read
-`make dist` uses to name the zip, so the artifact cannot disagree with the app
-inside it. That read takes every *distinct* `MARKETING_VERSION` in the pbxproj,
-not the first one, and `check-version` — a prerequisite of `print-version`,
-`dist` and `release` alike — refuses anything but exactly one, listing what it
-found. The first match is Debug's while every release is built from Release, so
-reading one value would hide the case worth reporting: a zip named
-`mdql-0.1.0.zip` holding an app that calls itself something else.
-`scripts/version.py` refuses that shape too, but it does not run anywhere on the
-dist path.
-
-The preview extension also bundles a `version.txt`, written by the
-`Generate version.txt` build phase on every single build — it is
-`alwaysOutOfDate` — and stamped `0.1.0 (a1b2c3d)`, or `…-dirty` when the tree had
-uncommitted changes. `MarkdownRenderer` draws it in the corner of every preview,
-which is how to tell which build is the one Finder is actually running, and
-`make release` reads it back out of the zip, which is the only thing tying a
-published artifact to the commit it was built from.
-
-`make version-test` is the bump tool's own suite — `scripts/test_version.py` and
-`scripts/test_changelog_section.py`, stdlib `unittest`, no pytest to install —
-and it runs the suites of `developer-id-identity.sh` and `install.sh` with it. It
-runs first in `make test`, and first in CI, because it needs nothing and takes
-seconds: a broken bump tool should not be discovered after a long `xcodebuild`.
+`v0.1.0` was tagged by hand, before any tool here existed, and `CHANGELOG.md`'s
+0.1.0 section is hand-written for the same reason. Its *heading* is the shape
+every generated release uses — `## 0.1.0 — 2026-08-20`, the line `render_release`
+writes, down to the em dash — so the file reads as one sequence and
+`scripts/changelog-section.py` finds it like any other. Its body is prose, which
+`render_release` never writes. It is also where the next release starts reading.
 
 ## The build to hand to someone else
 
@@ -203,16 +190,15 @@ seconds: a broken bump tool should not be discovered after a long `xcodebuild`.
 make dist
 ```
 
-Release build into `build/mdql`, signed by `scripts/codesign-app.sh`, notarized
-and stapled by `scripts/notarize-app.sh`, out as
-`build/dist/mdql-<version>.zip`. Three things about it are worth knowing before
+Release build into `build/mdql`, signed by `scripts/codesign-app.sh`, checked by
+`scripts/version.py --check`, notarized and stapled by `scripts/notarize-app.sh`,
+out as `build/dist/mdql-<version>.zip`. Three things about it are worth knowing before
 the first run.
 
-**It refuses a dirty tree.** The `Generate version.txt` build phase writes
-`${MARKETING_VERSION} (${HASH}${DIRTY})` into the extension's resources and
-`MarkdownRenderer` draws it in the corner of every preview, so a build made over
-uncommitted changes ships a badge reading `0.1.0 (a1b2c3d-dirty)` to everyone who
-downloads it. `make release`'s own clean-tree check cannot stand in for this one:
+**It refuses a dirty tree.** The extension's `Stamp version` phase writes the
+badge into its `version.txt` and `MarkdownRenderer` draws it in the corner of
+every preview, so a build made over uncommitted changes ships a badge reading
+`0.2.7 (a1b2c3d-dirty)` to everyone who downloads it. `make release`'s own clean-tree check cannot stand in for this one:
 it sees the tree whenever it happens to run, not the tree the zip was built from
 — edit, `make dist`, `git checkout .`, and every refusal there passes on a
 notarized build of code that is in no commit. So `make dist` asks first, and
@@ -342,7 +328,7 @@ document single out as the one people miss.
 
 It refuses unless all of these hold, checked cheapest first so that the
 commonest mistake — having forgotten `make dist` — is not reported after a round
-trip to `origin`: the version is exactly one, the zip exists, the tag exists, the
+trip to `origin`: the version computes, the zip exists, the tag exists, the
 tag points at `HEAD`, `HEAD` is on `main`, the working tree is clean, **`origin`
 is `larskluge/mdql`**, **the zip is the build being released and was built from
 the tagged commit**, and **the tag is already on `origin`**. A published release
@@ -373,10 +359,9 @@ Built from the tagged commit is the one of those the tree cannot answer, and the
 one everything else quietly assumes. `make dist`, `git reset --hard <older tag>`,
 `make release` satisfies every refusal above — tag is `HEAD`, branch is `main`,
 tree is clean, the app calls itself the right version — and publishes a build of
-a commit that is not the tag. The evidence is inside the bundle: the
-`Generate version.txt` build phase writes `${MARKETING_VERSION} (${HASH}${DIRTY})`
-into the extension's resources on every build, so the artifact carries the commit
-it was made from. `make release` reads
+a commit that is not the tag. The evidence is inside the bundle: the extension's
+`Stamp version` phase writes `<version> (<commit>)` into its `version.txt` on every
+build, so the artifact carries the commit it was made from. `make release` reads
 `mdql.app/Contents/PlugIns/mdqlPreview.appex/Contents/Resources/version.txt` out
 of the unpacked bundle, resolves that hash, and requires it to be
 `v<version>^{commit}`. A `-dirty` stamp is refused with it: `check-clean` saw the
@@ -395,7 +380,9 @@ one.
 Two workflows run on this repository, and neither of them releases.
 
 `.github/workflows/ci.yml`, on every pull request to `main` and on `main` when owl
-dispatches it, runs three steps in this order:
+dispatches it, checks out the whole history and every tag (`fetch-depth: 0`,
+since the build computes its version from both and refuses a shallow clone), then
+runs three steps in this order:
 
 1. **Test the version tooling** — `make version-test`, first because it needs
    nothing installed and takes seconds.

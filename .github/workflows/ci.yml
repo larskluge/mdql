@@ -32,15 +32,19 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # Every build computes its version from git history (scripts/version.py): the
+      # newest vX.Y.Z tag reachable from HEAD, and the commit count as the build
+      # number. The default depth-1 checkout has neither, and the build refuses it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Before the build, for the reason the Makefile gives: this suite needs
-      # nothing installed and takes seconds, and a broken bump tool should not
-      # be discovered twenty minutes into an xcodebuild. It also carries
-      # test_the_repositorys_own_pbxproj_is_sound, the only check anywhere that a
-      # target-level MARKETING_VERSION has not been added to shadow the project-level
-      # one — a PR doing that leaves one target shipping a stale number with every
-      # build in this file still green.
+      # nothing installed and takes seconds, and a broken version tool should not
+      # be discovered twenty minutes into an xcodebuild. Its ProjectTests read this
+      # repository's own pbxproj: a stored version back in it, or a bundle target
+      # without its Stamp version phase, fails here — the latter would otherwise
+      # ship an appex macOS refuses to load, with every build in this file green.
       - name: Test the version tooling
         run: make version-test
 

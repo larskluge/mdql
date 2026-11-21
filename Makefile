@@ -5,12 +5,16 @@ LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Versions/Current
 
 install:
 	@echo "Building mdql (Release)..."
-	@xcodebuild -project mdql.xcodeproj -scheme mdql -configuration Release \
+	@# pipefail, or the pipe exits with tail's 0 and a failed build installs the last one.
+	@set -o pipefail; xcodebuild -project mdql.xcodeproj -scheme mdql -configuration Release \
 		-destination 'platform=macOS' build 2>&1 | tail -3
 	@echo ""
 	@BUILT="$$(xcodebuild -project mdql.xcodeproj -scheme mdql -configuration Release \
 		-showBuildSettings 2>/dev/null | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p')" && \
 		scripts/install.sh "$$BUILT"
+	@# The version every build computes, in all three bundles of what was installed:
+	@# an appex whose CFBundleVersion differs from its app's is never loaded.
+	@python3 scripts/version.py --check /Applications/mdql.app
 	@echo ""
 	@# Verify pluginkit registration
 	@FINAL="$$(pluginkit -m -v -A -i $(BUNDLE_ID) 2>/dev/null)" && \
@@ -39,7 +43,7 @@ install:
 	@echo "Done. Test with: qlmanage -p README.md"
 
 # Every test in the repository. `version-test` runs first because it needs nothing
-# at all and takes seconds: a broken bump tool should not be discovered after
+# at all and takes seconds: a broken version tool should not be discovered after
 # a long xcodebuild.
 test: version-test
 	xcodebuild -project mdql.xcodeproj -scheme mdql -destination 'platform=macOS' test
@@ -53,17 +57,19 @@ clean:
 
 # ---- Release ----------------------------------------------------------------
 #
-# The whole process, in order, is:
+# Nothing here bumps a version: every build computes it from git history
+# (scripts/version.py; docs/releases.md → "The version"). A release is cut only
+# when Lars asks for one, in this order:
 #
-#   make version                          # bump, changelog, commit, tag — local only
-#   git show                              # the review
+#   make release-tag-dry                  # the CHANGELOG section and tag it would write
+#   make release-tag                      # write them: one commit, one tag — local only
 #   git push origin main --follow-tags    # main first, then the tag
 #   make dist                             # build, sign, notarize, staple, zip
 #   make release                          # publish it on GitHub
 #
 # docs/releases.md says what each step needs and how to undo it.
 
-.PHONY: version version-dry version-test print-version check-version check-clean \
+.PHONY: release-tag release-tag-dry version-test print-version check-version check-clean \
 	build-release dist release
 
 # `dist` lists its guards before its build so that neither costs a build to learn,
@@ -79,74 +85,52 @@ clean:
 # fork's clone passes a tag check against the fork and then publishes to the upstream.
 GH_REPO = larskluge/mdql
 
-# Bump the version from the commits since the last tag. The level comes from each
-# subject's prefix — `feat` a minor, `fix`/`perf` a patch, `chore`/`docs`/`ci` and
-# friends nothing at all — and an unprefixed subject is a patch listed under
-# **Other**, which is most of this repository's history. It writes the two
-# project-level settings in mdql.xcodeproj/project.pbxproj and CHANGELOG.md, then
-# commits and tags.
-#
-# It pushes nothing, which is what makes a fully automatic bump safe: the run stops
-# at a local commit, the changelog it wrote is the evidence table, `git show` is the
-# review, and `git reset --hard HEAD~1 && git tag -d v<version>` is the undo.
-#
-# Force a level with `make version VERSION_ARGS='--level major'`. That is also how
-# 1.0 happens, since nothing infers a major on its own.
-VERSION_ARGS ?=
-version:
-	python3 scripts/version.py $(VERSION_ARGS)
+# CHANGELOG.md's section for the version HEAD computes, listing the commits since the
+# previous release under Added / Fixed / Other, committed alone as
+# `chore(release): <version>` — a quiet type, so the version stays where it was —
+# and the annotated tag `v<version>` on that commit. It pushes nothing, and prints
+# the undo. `RELEASE_ARGS='--major 1'` is the release that makes it 1.0.0, on Lars's
+# word only: nothing infers a major.
+RELEASE_ARGS ?=
+release-tag:
+	python3 scripts/release-tag.py $(RELEASE_ARGS)
 
-# The same reading, written nowhere. What to run before the real one.
-version-dry:
-	python3 scripts/version.py --dry-run $(VERSION_ARGS)
+# The same section and tag, written nowhere.
+release-tag-dry:
+	python3 scripts/release-tag.py --dry-run $(RELEASE_ARGS)
 
-# The bump tool's own suite, and beside it the suites of the other scripts here:
-# developer-id-identity.sh and install.sh, each run against stubs. stdlib unittest —
-# there is no pytest in this tree, and adding one for a handful of modules would be a
-# dependency to install on every machine that runs `make test`.
+# The version tools' own suites, and beside them the suites of the other scripts
+# here: developer-id-identity.sh and install.sh, each run against stubs. stdlib
+# unittest — there is no pytest in this tree, and adding one for a handful of modules
+# would be a dependency to install on every machine that runs `make test`.
 version-test:
 	python3 -m unittest discover -s scripts -p 'test_*.py'
 
-# What a release would call itself right now, read out of the one place that holds
-# it rather than passed in, so the zip a release ships can never be named something
-# the app inside it does not call itself.
-#
-# `sort -u` rather than `head -1`, because the setting appears once per project-level
-# configuration and the first match is Debug's while every release is built from
-# Release. Reading either one on its own hides the case worth reporting: a pbxproj
-# whose two configurations disagree, which is how a zip named mdql-0.1.0.zip comes to
-# hold an app that calls itself 9.9.9. scripts/version.py refuses that too, but it
-# does not run anywhere on the dist path, so nothing else would notice. Every
-# distinct value therefore survives into VERSION, and `check-version` refuses on
-# anything but one. The pattern is anchored on the `KEY = value;` setting form
-# because the version-stamp build phase's shellScript also mentions
-# `${MARKETING_VERSION}`.
-VERSION = $(shell sed -n 's/^[[:space:]]*MARKETING_VERSION = \(.*\);$$/\1/p' mdql.xcodeproj/project.pbxproj | sort -u)
+# The version HEAD computes, asked once per make run however many recipes name it,
+# so the zip's name, the bundle check and the tag cannot disagree because a commit
+# landed between two reads. Empty when scripts/version.py fails, whose reason is then
+# already on stderr.
+VERSION = $(eval VERSION := $$(shell python3 scripts/version.py))$(VERSION)
 
 # The guard in front of everything that names a version. Its own target because it
 # has to answer before `make dist` spends a build and a notarization round trip on a
 # zip it would then have to call `mdql-.zip`.
 check-version:
 	@[ -n "$(VERSION)" ] \
-		|| { echo "make: no MARKETING_VERSION in mdql.xcodeproj/project.pbxproj." >&2; exit 1; }
-	@[ $(words $(VERSION)) -eq 1 ] \
-		|| { echo "make: mdql.xcodeproj/project.pbxproj declares $(words $(VERSION)) different MARKETING_VERSIONs: $(VERSION)" >&2; \
-		     echo "      The project-level Debug and Release configurations disagree, so there is" >&2; \
-		     echo "      no one version to build, to name a zip after, or to tag. Set them to the" >&2; \
-		     echo "      same value — \`make version\` writes both." >&2; exit 1; }
+		|| { echo "make: scripts/version.py computed no version; its reason is above." >&2; exit 1; }
 
 print-version: check-version
 	@echo $(VERSION)
 
 # A dist build is the one build that cannot tolerate uncommitted work.
 #
-# The version-stamp build phase writes `${MARKETING_VERSION} (${HASH}${DIRTY})` into
-# version.txt and mdqlPreview draws it in the corner of every preview, so a build
-# made over a dirty tree ships a preview that reads `0.1.0 (a1b2c3d-dirty)` to
-# everyone who downloads it. `make release`'s own clean-tree check cannot stand in
-# for this one: it sees the tree whenever it happens to run, not the tree the zip was
-# built from. Otherwise edit, `make dist`, `git checkout .`, `make release` passes
-# every refusal there and publishes a notarized build of code that is in no commit.
+# The Stamp version build phase writes `<version> (<commit>-dirty)` into version.txt
+# over a dirty tree, and mdqlPreview draws it in the corner of every preview, so such
+# a build ships a preview that reads `0.2.7 (a1b2c3d-dirty)` to everyone who
+# downloads it. `make release`'s own clean-tree check cannot stand in for this one:
+# it sees the tree whenever it happens to run, not the tree the zip was built from.
+# Otherwise edit, `make dist`, `git checkout .`, `make release` passes every refusal
+# there and publishes a notarized build of code that is in no commit.
 check-clean:
 	@dirty="$$(git status --porcelain)"; \
 	[ -z "$$dirty" ] || { \
@@ -177,28 +161,12 @@ build-release: check-version
 	CI=true xcodebuild -project mdql.xcodeproj -scheme mdql -configuration Release \
 		-destination 'platform=macOS' -derivedDataPath $(RELEASE_DERIVED) build
 	scripts/codesign-app.sh $(RELEASE_APP)
-	@# The version stamp, checked here rather than discovered later.
-	@#
-	@# `release` refuses to publish a zip whose version.txt does not read
-	@# `<version> (<commit>)` — that stamp is the only thing tying a published
-	@# artifact to the tagged commit. Nothing else asserts the format, so a change to
-	@# the `Generate version.txt` build phase would pass every test in the repository
-	@# and surface as a refusal after a full build and a notarization round trip. It
-	@# costs nothing to ask now.
-	@stamp="$(RELEASE_APP)/Contents/PlugIns/mdqlPreview.appex/Contents/Resources/version.txt"; \
-	read -r stamped <"$$stamp" 2>/dev/null || { \
-		echo "make: the build wrote no $$stamp." >&2; \
-		echo "      The 'Generate version.txt' build phase on the mdqlPreview target writes it" >&2; \
-		echo "      on every build; \`make release\` reads it back to prove the zip is a build" >&2; \
-		echo "      of the tagged commit." >&2; exit 1; }; \
-	case "$$stamped" in \
-	"$(VERSION) ("*")") ;; \
-	*) echo "make: version.txt reads '$$stamped', not '$(VERSION) (<commit>)'." >&2; \
-	   echo "      \`make release\` parses that shape to check the zip was built from the" >&2; \
-	   echo "      tagged commit, and would refuse this build. Fix the 'Generate version.txt'" >&2; \
-	   echo "      build phase on the mdqlPreview target." >&2; exit 1 ;; \
-	esac; \
-	echo "  stamped:  $$stamped"
+	@# The version, checked here rather than discovered later: all three bundles carry
+	@# the computed version and build number, and version.txt reads
+	@# `<version> (<commit>)`, the stamp `make release` reads back to tie the zip to
+	@# the tagged commit. A broken Stamp version phase would otherwise surface as a
+	@# refusal after a notarization round trip, or as a preview that never loads.
+	python3 scripts/version.py --check $(RELEASE_APP)
 
 # The build to hand to someone else: notarized, stapled, and verified against a
 # quarantined copy of the shipped zip. Needs a Developer ID Application certificate
@@ -211,9 +179,9 @@ build-release: check-version
 #
 # `check-clean` runs before the build rather than after it, since the answer does not
 # change during one and costs a full build and a notarization round trip to learn
-# late. `build-release` carries `check-version` itself, because it reads VERSION to
-# check the stamp the build wrote; make builds a phony prerequisite once per run, so
-# naming it in both places does not make `make dist` ask twice.
+# late. `build-release` carries `check-version` itself, so a build is never spent on a
+# tree whose version cannot be computed; make builds a phony prerequisite once per
+# run, so naming it in both places does not make `make dist` ask twice.
 dist: check-version check-clean build-release
 	scripts/notarize-app.sh $(RELEASE_APP) $(DIST)/mdql-$(VERSION).zip
 
@@ -226,10 +194,10 @@ dist: check-version check-clean build-release
 # commonest mistake, having forgotten `make dist`, is not reported after a trip to
 # origin:
 #
-#   the version is one       `check-version`, above: an empty or self-contradicting
-#                            MARKETING_VERSION names a zip nothing built
+#   the version computes     `check-version`, above: without one there is no zip
+#                            name to look for
 #   the zip exists           without it there is nothing to publish
-#   the tag exists           `make version` creates it; without one there is
+#   the tag exists           `make release-tag` creates it; without one there is
 #                            nothing to release
 #   the tag is HEAD          otherwise this publishes a build of a different commit
 #                            than the one that was reviewed
@@ -262,9 +230,9 @@ dist: check-version check-clean build-release
 # tag>`, `make release` satisfies every refusal here — tag is HEAD, branch is main,
 # tree is clean, the app calls itself the right version — and publishes a build of a
 # commit that is not the tag, whose previews read `0.1.0 (f1e1eab)` while the release
-# says 49aa524. The evidence is inside the bundle: the `Generate version.txt` build
-# phase is alwaysOutOfDate and writes `${MARKETING_VERSION} (${HASH}${DIRTY})` into
-# the extension's Resources on every single build, so each artifact carries the commit
+# says 49aa524. The evidence is inside the bundle: the extension's Stamp version build
+# phase is alwaysOutOfDate and writes `<version> (<commit>)` into its Resources on
+# every single build, so each artifact carries the commit
 # it was made from precisely so it can be asked. So it is asked, and a `-dirty` stamp
 # is refused with it — `check-clean` saw the tree at dist time, this sees the tree the
 # build actually read.
@@ -295,11 +263,11 @@ release: check-version
 	[ -f "$$zip" ] \
 		|| { echo "make: there is no $$zip — run \`make dist\` first." >&2; exit 1; }; \
 	git rev-parse -q --verify "refs/tags/$$tag" >/dev/null \
-		|| { echo "make: there is no tag $$tag — run \`make version\` first." >&2; exit 1; }; \
+		|| { echo "make: there is no tag $$tag — run \`make release-tag\` first." >&2; exit 1; }; \
 	tagged="$$(git rev-parse "$$tag^{commit}")"; head="$$(git rev-parse HEAD)"; \
 	[ "$$tagged" = "$$head" ] \
 		|| { echo "make: $$tag points at $$tagged but HEAD is $$head." >&2; \
-		     echo "      Check out the tagged commit, or bump again." >&2; exit 1; }; \
+		     echo "      Check out the tagged commit, or cut a release at HEAD." >&2; exit 1; }; \
 	branch="$$(git rev-parse --abbrev-ref HEAD)"; \
 	[ "$$branch" = "main" ] \
 		|| { echo "make: HEAD is on '$$branch', not main — a release is cut from main." >&2; exit 1; }; \

@@ -22,13 +22,17 @@ qlmanage -p /path/to/file.md
 
 `make install` is the primary build command. It builds a Release binary, calls `scripts/install.sh` to copy to `/Applications/` and clean up stale registrations, then verifies pluginkit and lsregister have exactly one entry. A viewer that is running is quit and relaunched on the new build with the documents it was showing; if one does not quit, `make install` fails and names its pid rather than leave it on the old build unannounced. The Xcode post-build phase also calls `scripts/install.sh` (with `SKIP_LAUNCH=1` since apps can't be launched during builds), where a running viewer is left alone and reported as a build warning.
 
-## Releases
+## Versions and releases
 
-[docs/releases.md](docs/releases.md) is the whole process — four make targets, with the push between them, which is not optional:
+**Every build computes the version from git history; nothing stores or bumps it** (`python3 scripts/version.py`, `--explain` for how history reads; docs/releases.md → "The version"). The `mdql-version` target computes it once per build and each bundle's `Stamp version` phase writes it in. **Never add `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` or an `Info.plist` version, and never let a bundle compute its own**: macOS refuses to load an appex whose `CFBundleVersion` disagrees with its app's. The major moves only on Lars's word ("make it 1.0" → `git tag -a v1.0.0 -m 1.0.0` on main's HEAD, pushed); never infer one.
+
+**Every commit subject starts with a conventional prefix**, since the version is read from them: `feat:` only for a user-visible feature big enough to move the minor version; `fix:` or `perf:` for a bug fix or a small user-visible change (a patch); `chore:`, `docs:`, `ci:`, `test:`, `build:` or `refactor:` for what users never see (no bump). A `!` or `BREAKING CHANGE:` infers nothing.
+
+A release, a notarized zip on GitHub, only when Lars asks; [docs/releases.md](docs/releases.md) is the process, with the push between, which is not optional:
 
 ```bash
-make version-dry                      # what the bump would do, written nowhere
-make version                          # bump + CHANGELOG.md + commit + tag; pushes nothing
+make release-tag-dry                  # the CHANGELOG section and tag it would write
+make release-tag                      # CHANGELOG.md section + commit + annotated tag; pushes nothing
 git push origin main --follow-tags    # main, and the annotated tag it carries
 make dist                             # Release build → Developer ID sign → notarize → staple → zip
 make release                          # gh release create: the CHANGELOG section + an Install stanza as the body
@@ -36,31 +40,28 @@ make release                          # gh release create: the CHANGELOG section
 
 Skipping the push does not fail late: `make release` refuses until the tag is on `origin`. Every refusal on that path, and why each exists, is in docs/releases.md.
 
-The version lives in `mdql.xcodeproj/project.pbxproj` as project-level `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, inherited by all five targets. **Never edit them by hand, and never add a target-level override**: macOS refuses to load an appex whose `CFBundleVersion` disagrees with its containing app's, and `scripts/version.py` refuses any other shape (docs/releases.md → "Where the number lives").
-
-**Every commit subject starts with a conventional prefix**, since the version is read from them (docs/releases.md → "The bump"): `feat:` only for a user-visible feature big enough to move the minor version; `fix:` or `perf:` for a bug fix or a small user-visible change (a patch); `chore:`, `docs:`, `ci:`, `test:`, `build:` or `refactor:` for what users never see (no bump). Never `!` or a `BREAKING CHANGE:` footer: the major is Lars's call alone.
-
 ## Architecture
 
-macOS QuickLook preview extension for Markdown files. Five Xcode targets:
+macOS QuickLook preview extension for Markdown files. Six Xcode targets:
 
 - **mdql** — Host app, and a standalone Markdown viewer: `DocumentWindowController` hosts the same `MarkdownWebController` the extension does, in a window with a transparent titlebar and Share / Open-in-Zed toolbar items, so a file renders in the app exactly as it does in Quick Look. Deliberately **unsandboxed** (`mdql/mdql.entitlements` is an empty `<dict/>`), which is what lets it read and write the file directly rather than through the XPC service. Registration is `scripts/install.sh`'s job rather than the AppDelegate's; the post-build phase calls it to copy the build to `/Applications/`.
 - **mdqlPreview** — QuickLook Preview Extension (.appex). View-based preview (`QLIsDataBasedPreview=false`) using `WKWebView` + `WKScriptMessageHandler` + FileWatcher for live updates in Finder. Registered for `net.daringfireball.markdown` UTI.
 - **mdql-open-url** — Unsandboxed XPC service (`com.apple.product-type.xpc-service`). Embedded **inside the appex**, not beside it: a Release build puts it at `mdql.app/Contents/PlugIns/mdqlPreview.appex/Contents/XPCServices/com.mdql.app.open-url.xpc`. Exposes `OpenURLProtocol` with `open(_:withReply:)` (opens URLs in the default browser via `NSWorkspace`), `readFile(at:previewing:withReply:)` (reads sibling files the extension sandbox can't access directly, e.g. when navigating to a linked `.md` file) and `toggleCheckbox(at:offset:checked:previewing:withReply:)` (sets one task-list marker in the previewed file — a write the read-only extension sandbox has no way to make). No entitlements = no sandbox, so it checks every request against `AccessPolicy` itself.
 - **mdqlTests** — Unit tests. Compiles mdqlPreview and mdql sources directly (not hosted tests) since app extensions can't be imported as modules by test bundles.
 - **mdql-screenshot** — CLI tool for taking PNG screenshots of rendered markdown. Uses WKWebView (unsandboxed).
+- **mdql-version** — Aggregate target, no product: computes the version once per build for the three bundle targets, which depend on it.
 
 **Data flow:** Finder Space → `PreviewController.preparePreviewOfFile(at:)` → `MarkdownWebController` → `MarkdownRenderer.render(fileAt:)` → `WKWebView.loadHTMLString()`. Link clicks are intercepted in JS and posted via `window.webkit.messageHandlers.mdql.postMessage()` to Swift's `WKScriptMessageHandler`. Four JS actions: `openURL` (http/https → XPC open in browser), `openMarkdown` (relative `.md`/`.markdown` href, `#section` optional → that file in-place, scrolled to the section, pushing the current URL onto `fileHistory`), `goBack` (pops the history stack), and `toggleCheckbox` (sets the task-list marker at the checkbox's `data-cb-offset`, rendering the file again if it changed since, reverting the checkbox and showing a toast if the write fails). Hovering a link shows a bottom status bar. FileWatcher triggers innerHTML injection via `evaluateJavaScript()`.
 
 **Why reading linked `.md` files needs XPC:** The extension sandbox only grants read access to the file QuickLook initially passed in. Sibling `.md` files referenced by relative links must be read through `OpenURLProtocol.readFile(at:previewing:withReply:)` on the unsandboxed XPC service. `loadMarkdownFile` handles the initial file (uses `String(contentsOf:)` directly); navigation uses the controller's `readFile` closure.
 
-**Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, pinned to an exact revision) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Linked by every target but mdql-open-url.
+**Single external dependency:** `swift-markdown` (swiftlang/swift-markdown, pinned to an exact revision) — provides GFM support (tables, strikethrough, task lists) via cmark-gfm under the hood. Linked by every target but mdql-open-url and mdql-version.
 
 ## Key Files
 
 - `scripts/install.sh` — Single source of truth for install + registration. Copies to /Applications, unregisters every other `mdql.app` LaunchServices knows of, registers the extension, then launches the app for pluginkit finalization: running viewers are quit by pid and their documents reopened in the new build, and with none running the app is launched once and quit again. `scripts/test_install.py` runs it against a scratch directory and stubs (`MDQL_INSTALL_DIR`, `MDQL_LSREGISTER`), as part of `make version-test`.
-- `Makefile` — `make install` builds Release, calls `install.sh`, verifies no duplicates. `make clean` cleans build artifacts. The release path (`version`, `dist`, `release`, and the guards they depend on) lives at the bottom; [docs/releases.md](docs/releases.md) explains it.
-- `scripts/version.py`, `scripts/changelog-section.py` — The bump tool (pbxproj + CHANGELOG.md + commit + annotated tag) and the reader that hands one CHANGELOG section to `gh release create`. `make version-test` is their suite and runs first in `make test` and in CI.
+- `Makefile` — `make install` builds Release, calls `install.sh`, checks the installed bundles carry the computed version, verifies no duplicates. `make clean` cleans build artifacts. The release path (`release-tag`, `dist`, `release`, and the guards they depend on) lives at the bottom; [docs/releases.md](docs/releases.md) explains it.
+- `scripts/version.py`, `scripts/stamp-version.sh` — The calculator (`--write` for the build, `--check` on a built app; it never commits, tags or writes the project) and the `Stamp version` phases' script. `scripts/release-tag.py`, `scripts/changelog-section.py` — the release path's CHANGELOG section + commit + tag, and the reader handing one section to `gh release create`. `make version-test` is their suite and runs first in `make test` and in CI.
 - `mdqlPreview/MarkdownRenderer.swift` — Core rendering. `render(markdown:title:showBackButton:interactive:appChrome:)` for full HTML with CSS (renders back chevron + hover status bar when `showBackButton` is true, headroom under the host app's titlebar when `appChrome` is), `renderBody()` for body-only HTML (used by innerHTML updates). `escapingAttributeValues()` escapes link/image URLs and runs the tagfilter over raw HTML on the markup tree before formatting; `TaskCheckboxes` draws task-list checkboxes from that same parse, each carrying its marker's source offset (`data-cb-offset`) when `interactive`: never number them from the HTML or a line scan, which disagree with the parse (docs/learnings.md). Uses `BundleAnchor` class for cross-target bundle resolution, and draws the build's `version.txt` badge in the corner.
 - `mdqlPreview/Resources/preview.css` — Inkpad-derived design tokens. Uses CSS custom properties with `@media (prefers-color-scheme: dark)` for automatic dark mode. Key tokens: text `#3f3b3d`, bg `#f9f9f9`, links `#4183c4`. Also styles the hover link status bar and back button chrome.
 - `mdqlPreview/MarkdownWebController.swift` — The shared engine both hosts embed: WKWebView + WKScriptMessageHandler for native JS↔Swift messaging + FileWatcher for live updates. Handles `openURL` / `openMarkdown` / `goBack` / `toggleCheckbox`, maintains the `fileHistory` stack. Its `openURL` / `readFile` / `toggleCheckbox` closures are what differ between hosts.
@@ -92,7 +93,7 @@ macOS QuickLook preview extension for Markdown files. Five Xcode targets:
 
 ## Docs
 
-- [docs/releases.md](docs/releases.md) — cutting a release: the bump, signing, notarization, publishing, and why there is no release CI.
+- [docs/releases.md](docs/releases.md) — how the version is computed and reaches every bundle, and cutting a release: the tag, signing, notarization, publishing, and why there is no release CI.
 - [docs/live-updates.md](docs/live-updates.md) — how live previews work inside the Quick Look sandbox, and what fails there.
 - [docs/learnings.md](docs/learnings.md) — the platform gotchas behind the constraints above, each with what goes wrong and the fix. New ones go there, not here.
 - `docs/specs/` — design specs, `<date>-<topic>-design.md`.

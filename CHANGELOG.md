@@ -1,11 +1,13 @@
 # Changelog
 
-Every release from 0.2.0 on is written by `make version`, which reads the commits
-since the last tag and takes each entry's kind from the subject prefix — never by
-hand. The 0.1.0 section below is the one exception: the tool only moves a version
-forward, and the project already declared 0.1.0, so no run of it could have
-written that section. Its heading is the line every generated release gets, so the
-file reads as one sequence. `docs/releases.md` is how to cut a release.
+One section per release, written by `make release-tag` when a release is cut —
+the commits since the previous release, each under the heading its subject prefix
+gives it — and never by hand. Every build between releases carries a version too,
+computed from git history (`docs/releases.md` → "The version"), with no section
+here: 0.2.6, the baseline that computation starts from, is one. The 0.1.0 section
+below is the one hand-written exception, written before any tool could; its
+heading is the line every generated release gets, so the file reads as one
+sequence.
 
 ## 0.1.0 — 2026-08-20
 

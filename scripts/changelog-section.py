@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Pull one release's section out of CHANGELOG.md.
 
-`make version` already decided what a release changed, from the commits, and
+`make release-tag` already decided what a release changed, from the commits, and
 wrote it under a heading — so the GitHub release body reads that back rather
 than describing the same release a second time in a different voice.
 
-The headings are `scripts/version.py`'s (`render_release`): `## 0.2.0 —
+The headings are `scripts/release-tag.py`'s (`render_release`): `## 0.2.0 —
 2026-08-20`, with `### `-level groups under them. A section runs to the next
 `## ` heading — one outside a code fence, since a section that quotes markdown
 has `## ` lines of its own — or to the end of the file.
@@ -73,7 +73,7 @@ def section(changelog: str, version: str, source: str = "CHANGELOG.md") -> str:
     empty body — because the alternative, an empty string, becomes a release
     with no notes and nobody notices until it is published.
     """
-    # The date is whatever `make version` stamped, so only the version is
+    # The date is whatever `make release-tag` stamped, so only the version is
     # matched and the rest of the line is left alone. The lookahead is what
     # makes the match exact: without it `0.1.1` finds `## 0.1.10 — …` and
     # publishes the wrong release's notes. `$` covers a heading that carries no
@@ -89,7 +89,7 @@ def section(changelog: str, version: str, source: str = "CHANGELOG.md") -> str:
     if start is None:
         raise LookupError(
             f"{source} has no `## {version}` section. "
-            f"`make version` writes one per release; if this version was never "
+            f"`make release-tag` writes one per release; if this version was never "
             f"released, there is nothing to publish."
         )
 

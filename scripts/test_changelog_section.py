@@ -21,7 +21,7 @@ section = changelog_section.section
 # prefix match confuses with 0.1.1.
 CHANGELOG = """# Changelog
 
-Written by `make version`, which reads the commits since the last tag.
+Written by `make release-tag`, which reads the commits since the previous release.
 
 ## 0.2.0 — 2026-08-20
 
@@ -188,7 +188,7 @@ class SectionTests(unittest.TestCase):
         self.assertIn("tenth patch", section(CHANGELOG, "0.1.10"))
 
     def test_a_heading_without_a_date_still_matches(self):
-        """The date is `make version`'s stamp; a heading edited by hand may have
+        """The date is `make release-tag`'s stamp; a heading edited by hand may have
         none, and the release notes are still there to publish."""
         dateless = CHANGELOG.replace("## 0.2.0 — 2026-08-20", "## 0.2.0")
         self.assertIn("a thing the preview gained", section(dateless, "0.2.0"))

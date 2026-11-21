@@ -6,6 +6,20 @@
 	objectVersion = 56;
 	objects = {
 
+/* Begin PBXAggregateTarget section */
+		V10000010000000000000001 /* mdql-version */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = V20000010000000000000001 /* Build configuration list for PBXAggregateTarget "mdql-version" */;
+			buildPhases = (
+				V40000010000000000000001 /* Compute version */,
+			);
+			dependencies = (
+			);
+			name = "mdql-version";
+			productName = "mdql-version";
+		};
+/* End PBXAggregateTarget section */
+
 /* Begin PBXBuildFile section */
 		A10000010000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* AppDelegate.swift */; };
 		A10000020000000000000002 /* PreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000020000000000000002 /* PreviewController.swift */; };
@@ -98,6 +112,27 @@
 			remoteGlobalIDString = H40000010000000000000001;
 			remoteInfo = "mdql-open-url";
 		};
+		V60000010000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = V10000010000000000000001;
+			remoteInfo = "mdql-version";
+		};
+		V60000020000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = V10000010000000000000001;
+			remoteInfo = "mdql-version";
+		};
+		V60000030000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000010000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = V10000010000000000000001;
+			remoteInfo = "mdql-version";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -150,7 +185,7 @@
 			shellPath = /bin/bash;
 			shellScript = "# Skip on CI or when running tests\nif [ \"$CI\" = \"true\" ] || [ \"$ACTION\" = \"test\" ]; then\n    echo \"Skipping QuickLook registration (CI or test run)\"\n    exit 0\nfi\n\n# Cannot launch apps during build, so skip the app launch step\nSKIP_LAUNCH=1 exec \"$SOURCE_ROOT/scripts/install.sh\" \"$BUILT_PRODUCTS_DIR\"\n";
 		};
-		H10000080000000000000008 /* Generate version.txt */ = {
+		V40000010000000000000001 /* Compute version */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -158,13 +193,65 @@
 			);
 			inputPaths = (
 			);
-			name = "Generate version.txt";
+			name = "Compute version";
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/version.txt",
+				"$(BUILT_PRODUCTS_DIR)/mdql-version.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "cd \"$SOURCE_ROOT\"\nHASH=$(git rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nDIRTY=$(git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null || echo \"-dirty\")\necho \"${MARKETING_VERSION} (${HASH}${DIRTY})\" > \"$DERIVED_FILE_DIR/version.txt\"\ncp \"$DERIVED_FILE_DIR/version.txt\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/version.txt\"\n";
+			shellScript = "cd \"$SOURCE_ROOT\"\nexec python3 scripts/version.py --write \"$BUILT_PRODUCTS_DIR/mdql-version.stamp\"\n";
+		};
+		V50000010000000000000001 /* Stamp version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/mdql-version.stamp",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp version";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "exec \"$SOURCE_ROOT/scripts/stamp-version.sh\" \"$BUILT_PRODUCTS_DIR/mdql-version.stamp\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
+		};
+		V50000020000000000000002 /* Stamp version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/mdql-version.stamp",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp version";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/version.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "exec \"$SOURCE_ROOT/scripts/stamp-version.sh\" \"$BUILT_PRODUCTS_DIR/mdql-version.stamp\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/version.txt\"\n";
+		};
+		V50000030000000000000003 /* Stamp version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/mdql-version.stamp",
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp version";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "exec \"$SOURCE_ROOT/scripts/stamp-version.sh\" \"$BUILT_PRODUCTS_DIR/mdql-version.stamp\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -395,12 +482,14 @@
 				A80000010000000000000001 /* Frameworks */,
 				B20000040000000000000004 /* Resources */,
 				A70000010000000000000001 /* Embed Foundation Extensions */,
+				V50000010000000000000001 /* Stamp version */,
 				D10000100000000000000010 /* Install & Register QuickLook Extension */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				B40000010000000000000001 /* PBXTargetDependency */,
+				V70000010000000000000001 /* PBXTargetDependency */,
 			);
 			name = mdql;
 			packageProductDependencies = (
@@ -414,16 +503,17 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B30000020000000000000002 /* Build configuration list for PBXNativeTarget "mdqlPreview" */;
 			buildPhases = (
-				H10000080000000000000008 /* Generate version.txt */,
 				B20000020000000000000002 /* Sources */,
 				A80000020000000000000002 /* Frameworks */,
 				B20000050000000000000005 /* Resources */,
+				V50000020000000000000002 /* Stamp version */,
 				H70000010000000000000001 /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				H40000030000000000000003 /* PBXTargetDependency */,
+				V70000020000000000000002 /* PBXTargetDependency */,
 			);
 			name = mdqlPreview;
 			packageProductDependencies = (
@@ -480,10 +570,12 @@
 			buildPhases = (
 				H80000010000000000000001 /* Sources */,
 				H80000020000000000000002 /* Frameworks */,
+				V50000030000000000000003 /* Stamp version */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				V70000030000000000000003 /* PBXTargetDependency */,
 			);
 			name = "mdql-open-url";
 			productName = "mdql-open-url";
@@ -516,6 +608,9 @@
 					H40000010000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 					};
+					V10000010000000000000001 = {
+						CreatedOnToolsVersion = 15.0;
+					};
 				};
 			};
 			buildConfigurationList = B30000040000000000000004 /* Build configuration list for PBXProject "mdql" */;
@@ -539,6 +634,7 @@
 				B10000030000000000000003 /* mdqlTests */,
 				G40000010000000000000001 /* mdql-screenshot */,
 				H40000010000000000000001 /* mdql-open-url */,
+				V10000010000000000000001 /* mdql-version */,
 			);
 		};
 /* End PBXProject section */
@@ -677,6 +773,21 @@
 			target = H40000010000000000000001 /* mdql-open-url */;
 			targetProxy = H40000020000000000000002 /* PBXContainerItemProxy */;
 		};
+		V70000010000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = V10000010000000000000001 /* mdql-version */;
+			targetProxy = V60000010000000000000001 /* PBXContainerItemProxy */;
+		};
+		V70000020000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = V10000010000000000000001 /* mdql-version */;
+			targetProxy = V60000020000000000000002 /* PBXContainerItemProxy */;
+		};
+		V70000030000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = V10000010000000000000001 /* mdql-version */;
+			targetProxy = V60000030000000000000003 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -712,7 +823,6 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 72;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -732,7 +842,6 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -774,7 +883,6 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 72;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -788,7 +896,6 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -935,6 +1042,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = "mdql-open-url/Info.plist";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.mdql.app.open-url";
 				PRODUCT_NAME = "com.mdql.app.open-url";
@@ -948,11 +1056,28 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = "mdql-open-url/Info.plist";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.mdql.app.open-url";
 				PRODUCT_NAME = "com.mdql.app.open-url";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		V30000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		V30000020000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
 		};
@@ -1009,6 +1134,15 @@
 			buildConfigurations = (
 				H50000010000000000000001 /* Debug */,
 				H50000020000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		V20000010000000000000001 /* Build configuration list for PBXAggregateTarget "mdql-version" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				V30000010000000000000001 /* Debug */,
+				V30000020000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

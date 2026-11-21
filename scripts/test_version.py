@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""The bump tool's own suite. `python3 -m unittest discover -s scripts -p 'test_*.py'`."""
+"""The version calculator's suite. `python3 -m unittest discover -s scripts -p 'test_*.py'`."""
 
 import contextlib
-import datetime
 import io
 import os
 import pathlib
+import plistlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -13,581 +14,141 @@ import unittest
 from unittest import mock
 
 from version import (
-    CHANGELOG_HEADER,
-    PBXPROJ,
-    Commit,
+    APPEX,
+    BADGE,
+    XPC,
+    Reading,
     Version,
-    bump_level,
-    heading_for,
+    VersionError,
+    advance,
+    check_app,
+    explain,
     level_for,
     main,
-    parse_log,
-    prepend_release,
-    read_version,
-    release_note,
-    render_release,
-    summary,
-    version_spots,
-    write_version,
+    read,
+    stamp_text,
 )
 
-
-def commit(subject, body=""):
-    return Commit(sha="0" * 40, subject=subject, body=body)
+SCRIPTS = pathlib.Path(__file__).resolve().parent
+REPO = SCRIPTS.parent
 
 
 class VersionTests(unittest.TestCase):
     def test_parses_and_renders(self):
-        self.assertEqual(str(Version.parse("0.1.0")), "0.1.0")
+        self.assertEqual(str(Version.parse("0.2.6")), "0.2.6")
         self.assertEqual(Version.parse("12.3.45"), Version(12, 3, 45))
 
     def test_refuses_a_two_part_version(self):
-        # Every Info.plist here shipped "1.0" hard-coded before the version
-        # became a build setting. A string of that shape must never be read as
-        # a version, or a bump would write 1.1 and call it a minor release.
         with self.assertRaises(ValueError):
             Version.parse("1.0")
 
-    def test_a_patch_bump_moves_the_last_part_only(self):
-        # The level most of this repository's releases land on, and the one the
-        # other bumps never exercise: major and minor both zero the patch, so an
-        # arithmetic slip in this branch alone would go unseen.
-        self.assertEqual(Version(0, 1, 4).bumped("patch"), Version(0, 1, 5))
+    def test_a_patch_moves_the_last_part_only(self):
+        self.assertEqual(Version(0, 2, 6).bumped("patch"), Version(0, 2, 7))
 
-    def test_a_minor_bump_zeroes_the_patch(self):
-        self.assertEqual(Version(0, 1, 4).bumped("minor"), Version(0, 2, 0))
-
-    def test_a_major_bump_zeroes_both(self):
-        self.assertEqual(Version(0, 4, 2).bumped("major"), Version(1, 0, 0))
+    def test_a_minor_zeroes_the_patch(self):
+        self.assertEqual(Version(0, 2, 6).bumped("minor"), Version(0, 3, 0))
 
     def test_none_leaves_it_alone(self):
-        self.assertEqual(Version(0, 1, 4).bumped("none"), Version(0, 1, 4))
+        self.assertEqual(Version(0, 2, 6).bumped("none"), Version(0, 2, 6))
 
-    def test_an_unknown_level_is_an_error(self):
+    def test_there_is_no_major_level(self):
+        # The major comes from a tag Lars asks for and from nothing a commit says.
         with self.assertRaises(ValueError):
-            Version(0, 1, 0).bumped("huge")
+            Version(0, 2, 6).bumped("major")
 
 
 class LevelTests(unittest.TestCase):
-    def test_feat_is_minor(self):
-        self.assertEqual(level_for("feat: .md link navigation + hover status bar"), "minor")
+    def test_feat_is_a_minor(self):
+        self.assertEqual(level_for("feat: hide the standalone viewer with ⌘H"), "minor")
 
     def test_a_scope_does_not_change_the_type(self):
         self.assertEqual(level_for("feat(preview): render task lists"), "minor")
 
-    def test_fix_and_perf_are_patch(self):
-        self.assertEqual(level_for("fix: HTML-escape code blocks and link hrefs"), "patch")
+    def test_fix_and_perf_are_patches(self):
+        self.assertEqual(level_for("fix: make install restarts every running viewer"), "patch")
         self.assertEqual(level_for("perf: the preview no longer re-parses on scroll"), "patch")
 
-    def test_quiet_types_do_not_bump(self):
-        for subject in (
-            "docs: move specs to docs/specs/",
-            "ci: run the suite on every push",
-            "chore: add build/ to .gitignore",
-            "refactor: one renderer, not two",
-            "test: strengthen HTML-escape coverage",
-            "build: bump the toolchain",
-            "style: reformat the CSS",
-        ):
-            self.assertEqual(level_for(subject), "none", subject)
+    def test_quiet_types_move_nothing(self):
+        for kind in ("chore", "docs", "ci", "test", "build", "refactor", "style"):
+            self.assertEqual(level_for(f"{kind}: something users never see"), "none", kind)
 
-    def test_a_bang_is_major(self):
-        self.assertEqual(level_for("feat!: the extension's bundle id changed"), "major")
-        self.assertEqual(level_for("fix(preview)!: drop the legacy WebView"), "major")
+    def test_an_unprefixed_subject_is_a_patch(self):
+        self.assertEqual(level_for("Checkbox toggles flip the right task"), "patch")
 
-    def test_a_breaking_change_footer_is_major(self):
-        self.assertEqual(
-            level_for("feat: a new bridge", body="BREAKING CHANGE: the old one is gone"),
-            "major",
-        )
-
-    def test_an_unlabelled_subject_is_a_patch_rather_than_nothing(self):
-        # 48 of this repository's 69 non-merge commits look like this. Silence
-        # would drop most of every release on the floor.
-        self.assertEqual(
-            level_for("Give the titlebar file name Finder's path menu; fix HTML escaping"),
-            "patch",
-        )
-
-    def test_an_unknown_type_is_a_patch_rather_than_nothing(self):
+    def test_a_type_nobody_listed_is_a_patch(self):
         self.assertEqual(level_for("quicklook: previews open faster"), "patch")
 
+    def test_a_bang_infers_nothing(self):
+        self.assertEqual(level_for("feat!: the extension's bundle id changed"), "minor")
+        self.assertEqual(level_for("fix(preview)!: drop the legacy WebView"), "patch")
+        self.assertEqual(level_for("docs!: rewrite the README"), "none")
 
-class HeadingTests(unittest.TestCase):
-    def test_headings_follow_the_type_not_the_level(self):
-        # `fix` and an unlabelled commit are both patch, and they do not share a
-        # heading — which is why heading_for exists separately from level_for.
-        self.assertEqual(heading_for("feat: a thing"), "Added")
-        self.assertEqual(heading_for("fix: a thing"), "Fixed")
-        self.assertEqual(heading_for("perf: a thing"), "Fixed")
-        self.assertEqual(heading_for("feat!: a thing"), "Changed")
-        self.assertEqual(heading_for("quicklook: a thing"), "Other")
-        self.assertEqual(heading_for("Polish macOS app shell"), "Other")
 
-    def test_a_quiet_type_has_no_heading_at_all(self):
-        self.assertIsNone(heading_for("docs: a thing"))
+class AdvanceTests(unittest.TestCase):
+    BASE = Version(0, 2, 6)
 
-    def test_summary_strips_the_prefix_and_the_pr_number(self):
+    def test_nothing_after_the_baseline_is_the_baseline(self):
+        self.assertEqual(advance(self.BASE, []), self.BASE)
+
+    def test_each_fix_is_one_patch(self):
+        self.assertEqual(advance(self.BASE, ["fix: a", "perf: b", "Polish c"]), Version(0, 2, 9))
+
+    def test_feat_then_fix_is_the_first_patch_of_the_new_minor(self):
+        self.assertEqual(advance(self.BASE, ["feat: a", "fix: b"]), Version(0, 3, 1))
+
+    def test_fix_then_feat_resets_the_patch(self):
+        self.assertEqual(advance(self.BASE, ["fix: a", "fix: b", "feat: c"]), Version(0, 3, 0))
+
+    def test_quiet_commits_move_nothing_wherever_they_fall(self):
         self.assertEqual(
-            summary("fix: HTML-escape code blocks, inline code, headings (#11)"),
-            "HTML-escape code blocks, inline code, headings",
-        )
-
-    def test_summary_leaves_an_unprefixed_subject_whole(self):
-        self.assertEqual(
-            summary("Polish macOS app shell"),
-            "Polish macOS app shell",
+            advance(self.BASE, ["docs: a", "fix: b", "chore: c", "test: d"]), Version(0, 2, 7)
         )
 
 
-class BumpLevelTests(unittest.TestCase):
-    def test_the_bump_is_the_highest_level_in_the_batch(self):
-        self.assertEqual(
-            bump_level([commit("fix: one"), commit("feat: two"), commit("docs: three")]),
-            "minor",
-        )
-
-    def test_a_breaking_commit_beats_a_feat_in_the_same_batch(self):
-        # The only comparison that reads LEVELS' order past "minor": with a
-        # `feat` and a `feat!` in one release, minor and major are both on the
-        # table and the higher one has to win, or a breaking change ships as a
-        # minor release.
-        self.assertEqual(
-            bump_level(
-                [commit("feat: a new bridge"), commit("feat!: the bundle id changed")]
-            ),
-            "major",
-        )
-        self.assertEqual(
-            bump_level(
-                [
-                    commit("feat: a new bridge"),
-                    commit("fix: a thing", body="BREAKING CHANGE: the old one is gone"),
-                ]
-            ),
-            "major",
-        )
-
-    def test_a_fixes_only_batch_is_a_patch(self):
-        self.assertEqual(bump_level([commit("fix: one"), commit("fix: two")]), "patch")
-
-    def test_an_unprefixed_batch_is_a_patch(self):
-        self.assertEqual(
-            bump_level([commit("Use standard document window chrome"), commit("ci: two")]),
-            "patch",
-        )
-
-    def test_a_quiet_only_batch_is_no_release(self):
-        self.assertEqual(bump_level([commit("docs: one"), commit("ci: two")]), "none")
-
-    def test_no_commits_at_all_is_no_release(self):
-        self.assertEqual(bump_level([]), "none")
-
-
-class ChangelogTests(unittest.TestCase):
-    def test_a_release_groups_by_heading_in_a_fixed_order(self):
-        got = render_release(
-            Version(0, 2, 0),
-            "2026-08-20",
-            [
-                commit("fix: HTML-escape code blocks and link hrefs"),
-                commit("feat: .md link navigation + hover status bar (#10)"),
-                commit("docs: not in the changelog"),
-                commit("Polish macOS app shell"),
-            ],
-        )
-        self.assertEqual(
-            got,
-            "## 0.2.0 — 2026-08-20\n"
-            "\n"
-            "### Added\n"
-            "- .md link navigation + hover status bar\n"
-            "\n"
-            "### Fixed\n"
-            "- HTML-escape code blocks and link hrefs\n"
-            "\n"
-            "### Other\n"
-            "- Polish macOS app shell\n",
-        )
-
-    def test_a_breaking_change_gets_a_changed_group_with_its_bullet(self):
-        # "Changed" is the only heading no other test renders, and it carries
-        # the one kind of entry a reader cannot afford to miss: drop it from
-        # HEADING_ORDER and every breaking change leaves the changelog silently.
-        got = render_release(
-            Version(1, 0, 0),
-            "2026-08-20",
-            [
-                commit("feat!: the extension's bundle id changed"),
-                commit("fix: HTML-escape code blocks"),
-            ],
-        )
-        self.assertEqual(
-            got,
-            "## 1.0.0 — 2026-08-20\n"
-            "\n"
-            "### Changed\n"
-            "- the extension's bundle id changed\n"
-            "\n"
-            "### Fixed\n"
-            "- HTML-escape code blocks\n",
-        )
-
-    def test_a_quiet_commit_reaches_no_heading(self):
-        got = render_release(Version(0, 1, 1), "2026-08-20", [commit("ci: a thing")])
-        self.assertNotIn("###", got)
-        self.assertIn("## 0.1.1 — 2026-08-20", got)
-
-    def test_a_note_replaces_the_body(self):
-        got = render_release(
-            Version(0, 1, 1),
-            "2026-08-20",
-            [],
-            note="No changes; a patch release cut deliberately.",
-        )
-        self.assertEqual(
-            got,
-            "## 0.1.1 — 2026-08-20\n\nNo changes; a patch release cut deliberately.\n",
-        )
-
-    def test_new_releases_go_under_the_header_newest_first(self):
-        existing = CHANGELOG_HEADER + "\n## 0.1.0 — 2026-08-01\n\n### Added\n- the first one\n"
-        got = prepend_release(existing, "## 0.2.0 — 2026-08-20\n\n### Added\n- the second one\n")
-        self.assertTrue(got.startswith(CHANGELOG_HEADER))
-        self.assertLess(got.index("0.2.0"), got.index("0.1.0"))
-        self.assertIn("the first one", got)
-
-    def test_a_preamble_under_the_header_stays_above_the_releases(self):
-        # CHANGELOG.md opens with a paragraph saying what writes it. Inserting
-        # directly after the "# Changelog" line would push that paragraph below
-        # the newest release, where it reads as part of it.
-        existing = (
-            CHANGELOG_HEADER
-            + "\nWritten by `scripts/version.py`, and never by hand.\n"
-            + "\n## 0.1.0 — 2026-08-01\n\n### Added\n- the first one\n"
-        )
-        got = prepend_release(existing, "## 0.2.0 — 2026-08-20\n\n### Added\n- the second one\n")
-        self.assertLess(got.index("never by hand"), got.index("0.2.0"))
-        self.assertLess(got.index("0.2.0"), got.index("0.1.0"))
-
-    def test_a_preamble_survives_when_there_are_no_releases_yet(self):
-        existing = CHANGELOG_HEADER + "\nWritten by `scripts/version.py`.\n"
-        got = prepend_release(existing, "## 0.1.0 — 2026-08-20\n\n### Added\n- one\n")
-        self.assertLess(got.index("Written by"), got.index("0.1.0"))
-
-    def test_it_seeds_a_header_when_there_is_no_file_yet(self):
-        got = prepend_release("", "## 0.1.0 — 2026-08-20\n\n### Added\n- one\n")
-        self.assertTrue(got.startswith(CHANGELOG_HEADER))
-        self.assertIn("0.1.0", got)
-
-
-class ReleaseNoteTests(unittest.TestCase):
-    def test_a_release_with_real_entries_needs_no_note(self):
-        entries = [commit("feat: a thing")]
-        self.assertIsNone(release_note(entries))
-        self.assertIsNone(release_note(entries, forced="patch"))
-
-    def test_a_forced_bump_with_nothing_to_list_says_it_was_deliberate(self):
-        self.assertEqual(
-            release_note([], forced="patch"),
-            "No changes; a patch release cut deliberately.",
-        )
-
-    def test_commits_that_classify_as_nothing_still_count_as_no_entries(self):
-        # `chore` and `ci` carry no heading, so a batch of them is a release
-        # with nothing to list — which is exactly the forced-bump case.
-        entries = [commit("chore: tidy"), commit("ci: a thing")]
-        self.assertIn("deliberately", release_note(entries, forced="patch"))
-
-    def test_an_unforced_batch_never_gets_a_note(self):
-        # Unforced, the version only moves when some commit carries a heading,
-        # so there is nothing to explain.
-        self.assertIsNone(release_note([commit("chore: tidy")]))
-
-
-# A trimmed but faithful pbxproj: real tabs, unquoted values, both project-level
-# configurations, one target-level configuration that carries no version of its
-# own, and the version-stamp build phase whose shell script mentions
-# MARKETING_VERSION in passing. Raw string, so the `\"` and `\n` inside that
-# script stay the literal backslashes the real file holds.
-PBXPROJ_FIXTURE = r"""// !$*UTF8*$!
-{
-	archiveVersion = 1;
-	objects = {
-
-/* Begin PBXShellScriptBuildPhase section */
-		D10000010000000000000001 /* Stamp version.txt */ = {
-			isa = PBXShellScriptBuildPhase;
-			shellScript = "echo \"${MARKETING_VERSION}\" > \"$DERIVED_FILE_DIR/version.txt\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
-/* Begin XCBuildConfiguration section */
-		C10000010000000000000001 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CURRENT_PROJECT_VERSION = 71;
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
-				SDKROOT = macosx;
-			};
-			name = Debug;
-		};
-		C10000020000000000000002 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CURRENT_PROJECT_VERSION = 71;
-				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1.0;
-				SDKROOT = macosx;
-			};
-			name = Release;
-		};
-		C20000010000000000000001 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = mdql/mdql.entitlements;
-				INFOPLIST_FILE = mdql/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.mdql.app;
-			};
-			name = Debug;
-		};
-/* End XCBuildConfiguration section */
-
-/* Begin XCConfigurationList section */
-		B30000040000000000000004 /* Build configuration list for PBXProject "mdql" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				C10000010000000000000001 /* Debug */,
-				C10000020000000000000002 /* Release */,
-			);
-		};
-/* End XCConfigurationList section */
-	};
-}
-"""
-
-_MARKETING_LINE = "\t\t\t\tMARKETING_VERSION = 0.1.0;\n"
-_TARGET_SETTING = "\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.mdql.app;\n"
-
-
-class PbxprojTests(unittest.TestCase):
-    def test_it_reads_the_version(self):
-        self.assertEqual(read_version(PBXPROJ_FIXTURE), Version(0, 1, 0))
-
-    def test_the_shell_script_mention_is_not_a_third_occurrence(self):
-        # `shellScript = "…${MARKETING_VERSION}…"` sits on one long line in the
-        # real file. Matched loosely it reads as a third declaration and every
-        # bump refuses to run.
-        self.assertIn("${MARKETING_VERSION}", PBXPROJ_FIXTURE)
-        self.assertEqual(len(version_spots(PBXPROJ_FIXTURE)["MARKETING_VERSION"][0]), 2)
-
-    def test_a_write_round_trips_through_the_reader(self):
-        got = write_version(PBXPROJ_FIXTURE, Version(0, 2, 0), 72)
-        self.assertEqual(read_version(got), Version(0, 2, 0))
-        self.assertEqual(version_spots(got)["CURRENT_PROJECT_VERSION"][1], "72")
-
-    def test_it_rewrites_both_occurrences_of_both_settings(self):
-        got = write_version(PBXPROJ_FIXTURE, Version(0, 2, 0), 72)
-        self.assertEqual(got.count("\t\t\t\tMARKETING_VERSION = 0.2.0;\n"), 2)
-        self.assertEqual(got.count("\t\t\t\tCURRENT_PROJECT_VERSION = 72;\n"), 2)
-        self.assertNotIn("0.1.0", got)
-        self.assertNotIn("CURRENT_PROJECT_VERSION = 71", got)
-
-    def test_a_write_leaves_every_other_line_byte_identical(self):
-        got = write_version(PBXPROJ_FIXTURE, Version(0, 2, 0), 72)
-        before = PBXPROJ_FIXTURE.splitlines(keepends=True)
-        after = got.splitlines(keepends=True)
-        self.assertEqual(len(before), len(after))
-        changed = [(a, b) for a, b in zip(before, after) if a != b]
-        self.assertEqual(len(changed), 4, changed)
-        for a, b in changed:
-            # Only the value moved: same indentation, same key, same semicolon.
-            self.assertEqual(a[: a.index("=")], b[: b.index("=")])
-            self.assertTrue(b.endswith(";\n"), b)
-        self.assertIn("${MARKETING_VERSION}", got)
-        self.assertIn(_TARGET_SETTING, got)
-
-    def test_a_file_with_crlf_endings_is_written_not_quietly_skipped(self):
-        # Xcode writes LF, but a checkout through a tool that normalises endings
-        # does not have to. A carriage return sits exactly where the pattern's
-        # `;$` wants the end of the line: matched against that, every setting
-        # missed, the text came back byte-identical, and the bump announced a
-        # version it had not written.
-        crlf = PBXPROJ_FIXTURE.replace("\n", "\r\n")
-        got = write_version(crlf, Version(0, 2, 0), 72)
-        self.assertEqual(got.count("\tMARKETING_VERSION = 0.2.0;\r\n"), 2)
-        self.assertEqual(got.count("\tCURRENT_PROJECT_VERSION = 72;\r\n"), 2)
-        self.assertNotIn("0.1.0", got)
-        self.assertEqual(got.count("\n"), got.count("\r\n"))  # no line lost its CR
-        self.assertEqual(read_version(got), Version(0, 2, 0))
-
-    def test_a_setting_that_appears_once_is_an_error(self):
-        without = PBXPROJ_FIXTURE.replace(_MARKETING_LINE, "", 1)
-        with self.assertRaises(LookupError) as raised:
-            version_spots(without)
-        message = str(raised.exception)
-        self.assertIn("MARKETING_VERSION", message)
-        self.assertIn("once", message)
-        surviving = without.splitlines().index(_MARKETING_LINE.rstrip("\n")) + 1
-        self.assertIn(f"line {surviving}", message)
-
-    def test_a_setting_that_appears_nowhere_is_an_error(self):
-        without = PBXPROJ_FIXTURE.replace(_MARKETING_LINE, "")
-        with self.assertRaises(LookupError) as raised:
-            version_spots(without)
-        self.assertIn("has no MARKETING_VERSION", str(raised.exception))
-
-    def test_a_target_level_override_is_an_error_that_says_so(self):
-        # The failure worth naming: a third declaration inside one target's own
-        # configuration shadows the project's, so bumping the project value
-        # leaves that target on the old number and nothing goes red.
-        shadowed = PBXPROJ_FIXTURE.replace(
-            _TARGET_SETTING, _TARGET_SETTING + _MARKETING_LINE, 1
-        )
-        with self.assertRaises(LookupError) as raised:
-            version_spots(shadowed)
-        message = str(raised.exception)
-        self.assertIn("MARKETING_VERSION 3 times", message)
-        self.assertIn("target-level", message)
-
-    def test_two_configurations_that_disagree_are_an_error(self):
-        # Debug says one thing and Release another: there is no single current
-        # version, so there is nothing to bump *from*.
-        drifted = PBXPROJ_FIXTURE.replace(
-            "MARKETING_VERSION = 0.1.0;", "MARKETING_VERSION = 0.1.1;", 1
-        )
-        with self.assertRaises(LookupError) as raised:
-            version_spots(drifted)
-        message = str(raised.exception)
-        self.assertIn("disagrees about MARKETING_VERSION", message)
-        self.assertIn("0.1.1", message)
-        self.assertIn("0.1.0", message)
-
-    def test_a_two_part_version_in_the_project_is_refused(self):
-        # What the Info.plists held before the version became a build setting,
-        # and the shape a hand-edit reaches for.
-        placeholder = PBXPROJ_FIXTURE.replace(
-            "MARKETING_VERSION = 0.1.0;", "MARKETING_VERSION = 1.0;"
-        )
-        with self.assertRaises(ValueError) as raised:
-            read_version(placeholder)
-        message = str(raised.exception)
-        self.assertIn("1.0", message)
-        self.assertIn("MARKETING_VERSION", message)
-        self.assertIn(PBXPROJ, message)
-
-    def test_a_build_number_that_is_not_a_number_is_refused_by_name(self):
-        broken = PBXPROJ_FIXTURE.replace(
-            "CURRENT_PROJECT_VERSION = 71;", "CURRENT_PROJECT_VERSION = 71a;"
-        )
-        with self.assertRaises(ValueError) as raised:
-            read_version(broken)
-        self.assertIn("CURRENT_PROJECT_VERSION", str(raised.exception))
-
-    def test_the_repositorys_own_pbxproj_is_sound(self):
-        # The guard nothing else provides: a hand-edit that adds a target-level
-        # override, drops a setting, or lets the two configurations drift fails
-        # here rather than at the next release.
-        root = pathlib.Path(__file__).resolve().parent.parent
-        text = (root / PBXPROJ).read_text()
-        self.assertGreaterEqual(read_version(text), Version(0, 1, 0))
-        self.assertGreater(int(version_spots(text)["CURRENT_PROJECT_VERSION"][1]), 0)
-
-
-class LogParsingTests(unittest.TestCase):
-    def test_it_reads_sha_subject_and_body(self):
-        raw = (
-            "\x1eabc123\x00feat: a thing\x00the body\nsecond line\n"
-            "\x1edef456\x00fix: another\x00\n"
-        )
-        got = parse_log(raw)
-        self.assertEqual(len(got), 2)
-        self.assertEqual(got[0].sha, "abc123")
-        self.assertEqual(got[0].subject, "feat: a thing")
-        self.assertEqual(got[0].body, "the body\nsecond line")
-        self.assertEqual(got[1].subject, "fix: another")
-        self.assertEqual(got[1].body, "")
-
-    def test_a_subject_holding_a_colon_survives_intact(self):
-        got = parse_log(
-            "\x1eabc\x00Give the titlebar file name Finder's path menu; fix HTML escaping\x00\n"
-        )
-        self.assertEqual(
-            got[0].subject,
-            "Give the titlebar file name Finder's path menu; fix HTML escaping",
-        )
-
-    def test_empty_output_is_no_commits(self):
-        self.assertEqual(parse_log(""), [])
-
-
-# ---- the run itself --------------------------------------------------------
+# ---- against real repositories ---------------------------------------------
 
 
 @unittest.skipUnless(shutil.which("git"), "git is not on PATH")
-class ReleaseRunTests(unittest.TestCase):
-    """`main()` against a throwaway repository, read back through git.
-
-    Everything past the pure functions — which paths the commit holds, what kind
-    of object the tag is, what --dry-run refrains from doing, which failures
-    stop the run before it writes — exists only as repository state. So these
-    build a repository, run the tool in it, and ask git what it left behind.
-    """
+class RepositoryTests(unittest.TestCase):
+    """`read()` against throwaway repositories: everything it says comes out of git."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        base = pathlib.Path(tmp.name).resolve()
-        self.root = base / "repo"
-        # Outside the worktree, so a hook file never shows up as untracked work
-        # in the assertions about what the release commit left staged.
-        self.hooks = base / "hooks"
+        self.base = pathlib.Path(tmp.name).resolve()
+        self.root = self.base / "repo"
         self.root.mkdir()
-        self.hooks.mkdir()
-
-        # This machine's own git config must not reach in: a global signing key,
-        # hook or `core.autocrlf` would pass or fail these for reasons that are
-        # not the code. In the process's environment rather than each call's,
-        # because `main()` runs here too and makes its git calls from it.
+        # This machine's own git config must not reach in: a global hook, signing key
+        # or `core.autocrlf` would pass or fail these for reasons that are not the code.
         isolated = mock.patch.dict(
             os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
         )
         isolated.start()
         self.addCleanup(isolated.stop)
-
         self.git("init", "--quiet", "--initial-branch=main")
-        self.git("config", "user.name", "Release Test")
-        self.git("config", "user.email", "release-test@example.invalid")
-        self.git("config", "core.hooksPath", str(self.hooks))
-
-        self.pbxproj = self.root / PBXPROJ
-        self.pbxproj.parent.mkdir(parents=True)
-        self.pbxproj.write_text(PBXPROJ_FIXTURE)
-        self.changelog = self.root / "CHANGELOG.md"
-        self.changelog.write_text(CHANGELOG_HEADER + "\nWritten by `make version`.\n")
+        self.git("config", "user.name", "Version Test")
+        self.git("config", "user.email", "version-test@example.invalid")
         (self.root / "README.md").write_text("mdql\n")
         self.git("add", "-A")
         self.git("commit", "-m", "Import the tree")
 
-    def git(self, *args) -> str:
-        done = subprocess.run(
-            ["git", *args], cwd=self.root, check=True, capture_output=True, text=True
-        )
-        return done.stdout
+    def git(self, *args, cwd=None) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=cwd or self.root, check=True, capture_output=True, text=True
+        ).stdout
 
-    def commit(self, subject: str) -> None:
-        self.git("commit", "--allow-empty", "-m", subject)
+    def commit(self, *subjects, body="") -> None:
+        for subject in subjects:
+            message = subject + (f"\n\n{body}" if body else "")
+            self.git("commit", "--allow-empty", "-m", message)
+
+    def tag(self, name, ref="HEAD") -> None:
+        self.git("tag", "-a", name, "-m", name[1:], ref)
+
+    def version(self) -> str:
+        return str(read(self.root).version)
 
     def run_main(self, *argv):
-        """`main()` with the repository as its working directory, output captured.
-
-        The tool finds its root with `git rev-parse` from the process's own
-        directory, so the chdir is how a test points it at this repository —
-        and the `finally` is why one failing test does not move every later one.
-        It also keeps what was printed, which is otherwise lost on the runs that
-        end in SystemExit — exactly the runs whose reporting is under test.
-        """
         out, err = io.StringIO(), io.StringIO()
         here = os.getcwd()
         os.chdir(self.root)
@@ -596,338 +157,374 @@ class ReleaseRunTests(unittest.TestCase):
                 code = main(list(argv))
         finally:
             os.chdir(here)
-            self.printed, self.warned = out.getvalue(), err.getvalue()
-        return code, self.printed, self.warned
-
-    def head(self) -> str:
-        return self.git("rev-parse", "HEAD").strip()
-
-    def tags(self) -> list:
-        return self.git("tag", "--list").split()
-
-    def stamp_version(self, version: Version, subject: str) -> None:
-        """Move the project to `version` and commit it, as a release would.
-
-        A test that needs a baseline other than the fixture's 0.1.0 needs the
-        pbxproj to agree with the tag it puts there: `_require_tag_not_ahead`
-        refuses a tag that stands ahead of the project, and rightly.
-        """
-        self.pbxproj.write_text(write_version(self.pbxproj.read_text(), version, 71))
-        self.git("commit", "-m", subject, "--", PBXPROJ)
+        return code, out.getvalue(), err.getvalue()
 
     def test_this_machines_git_config_does_not_reach_the_repository(self):
-        # A hook declared in `~/.gitconfig` (`hook.<name>.command`, git 2.54)
-        # runs in every repository on the machine, this one included, and the
-        # repository's own `core.hooksPath` does not turn it off. One that
-        # refuses commits on `main` failed all of these in setUp — for whoever
-        # it applied to.
         listed = self.git("config", "--list", "--show-scope").splitlines()
         self.assertEqual({line.split("\t")[0] for line in listed}, {"local"})
 
-    def test_a_dry_run_writes_nothing_and_leaves_no_commit_or_tag(self):
-        self.commit("feat: .md link navigation")
-        pbxproj, changelog, head = (
-            self.pbxproj.read_bytes(),
-            self.changelog.read_bytes(),
-            self.head(),
-        )
-        code, out, _ = self.run_main("--dry-run")
-        self.assertEqual(code, 0)
-        self.assertIn("0.1.0 → 0.2.0", out)
-        self.assertIn("nothing written", out)
-        self.assertEqual(self.pbxproj.read_bytes(), pbxproj)
-        self.assertEqual(self.changelog.read_bytes(), changelog)
-        self.assertEqual(self.head(), head)
-        self.assertEqual(self.tags(), [])
-
-    def test_a_batch_that_says_it_is_not_user_visible_releases_nothing(self):
-        # From the tag the tree was released at, so the batch is only these two.
-        self.git("tag", "-a", "v0.1.0", "-m", "0.1.0")
-        self.commit("docs: move specs to docs/specs/")
-        self.commit("ci: run the suite on every push")
-        head = self.head()
+    def test_on_the_baseline_tag_it_is_the_tag(self):
+        self.tag("v0.2.6")
+        self.assertEqual(self.version(), "0.2.6")
         code, out, _ = self.run_main()
-        self.assertEqual(code, 0)
-        self.assertIn("nothing to release (0.1.0 stands)", out)
-        self.assertEqual(read_version(self.pbxproj.read_text()), Version(0, 1, 0))
-        self.assertEqual(self.head(), head)
-        self.assertEqual(self.tags(), ["v0.1.0"])  # no new one
+        self.assertEqual((code, out), (0, "0.2.6\n"))
 
-    def test_a_release_writes_the_project_the_changelog_the_commit_and_the_tag(self):
-        self.commit("feat: .md link navigation")
-        self.commit("fix: HTML-escape code blocks")
-        self.commit("docs: not in the changelog")
-        before = int(self.git("rev-list", "--count", "HEAD").strip())
-
-        code, out, _ = self.run_main()
-        self.assertEqual(code, 0)
-
-        text = self.pbxproj.read_text()
-        self.assertEqual(read_version(text), Version(0, 2, 0))
-        self.assertEqual(text.count("MARKETING_VERSION = 0.2.0;"), 2)
-
-        changelog = self.changelog.read_text()
-        self.assertIn("## 0.2.0 — ", changelog)
-        self.assertIn("- .md link navigation", changelog)
-        self.assertIn("- HTML-escape code blocks", changelog)
-        self.assertNotIn("not in the changelog", changelog)
-        self.assertLess(changelog.index("Written by"), changelog.index("## 0.2.0"))
-
-        subject = self.git("log", "-1", "--format=%s").strip()
-        self.assertEqual(subject, "chore(release): 0.2.0")
-        self.assertEqual(int(self.git("rev-list", "--count", "HEAD").strip()), before + 1)
-        self.assertEqual(self.tags(), ["v0.2.0"])
-        self.assertIn("v0.2.0", out)
-
-    def test_the_section_is_dated_today(self):
-        # The heading is what `changelog-section.py` matches on and what the
-        # release page shows. A date off by a day is wrong on both and there is
-        # nothing downstream that could notice.
-        self.commit("feat: .md link navigation")
-        self.run_main()
-        today = datetime.date.today().isoformat()
-        self.assertIn(f"## 0.2.0 — {today}\n", self.changelog.read_text())
-
-    def test_a_forced_level_is_released_instead_of_the_one_the_commits_ask_for(self):
-        # `--level` earns its place here: `make version VERSION_ARGS='--level
-        # major'` is the only route from 0.x to 1.0.0, because no subject short
-        # of a `!` or a BREAKING CHANGE footer ever asks for a major, and this
-        # tree's do not.
-        self.commit("fix: HTML-escape code blocks")
-        code, out, _ = self.run_main("--level", "major")
-        self.assertEqual(code, 0)
-        self.assertIn("0.1.0 → 1.0.0  (major)", out)
-        self.assertEqual(read_version(self.pbxproj.read_text()), Version(1, 0, 0))
-        self.assertEqual(
-            self.git("log", "-1", "--format=%s").strip(), "chore(release): 1.0.0"
+    def test_every_kind_of_commit_after_the_baseline(self):
+        self.tag("v0.2.6")
+        self.commit(
+            "fix: a",            # 0.2.7
+            "docs: b",           # 0.2.7
+            "perf: c",           # 0.2.8
+            "Unprefixed d",      # 0.2.9
+            "feat: e",           # 0.3.0
+            "ci: f",             # 0.3.0
+            "fix: g",            # 0.3.1
+            "refactor: h",       # 0.3.1
         )
-        self.assertEqual(self.tags(), ["v1.0.0"])
-        self.assertIn("## 1.0.0 — ", self.changelog.read_text())
-        self.assertIn("- HTML-escape code blocks", self.changelog.read_text())
+        self.assertEqual(self.version(), "0.3.1")
 
-    def test_a_forced_release_with_nothing_to_list_says_it_was_deliberate(self):
-        # `release_note`'s one branch, and `--level` is the only way `main()`
-        # reaches it: a throwaway build cut to take the signing and install path
-        # end to end. Unsaid, its section is a heading with nothing under it and
-        # no hint of why the number moved.
-        self.git("tag", "-a", "v0.1.0", "-m", "0.1.0")
-        self.commit("chore: add build/ to .gitignore")
-        code, _, _ = self.run_main("--level", "patch")
-        self.assertEqual(code, 0)
-        changelog = self.changelog.read_text()
-        self.assertIn("## 0.1.1 — ", changelog)
-        self.assertIn("No changes; a patch release cut deliberately.", changelog)
-        self.assertNotIn("###", changelog)
-        self.assertEqual(self.tags(), ["v0.1.0", "v0.1.1"])
+    def test_explain_shows_each_step(self):
+        self.tag("v0.2.6")
+        self.commit("feat: a new thing", "fix: a bug in it")
+        text = explain(read(self.root))
+        lines = text.splitlines()
+        self.assertEqual(lines[0], "0.2.6  v0.2.6")
+        self.assertRegex(lines[1], r"^0\.3\.0  minor  [0-9a-f]{7}  feat: a new thing$")
+        self.assertRegex(lines[2], r"^0\.3\.1  patch  [0-9a-f]{7}  fix: a bug in it$")
+        self.assertTrue(lines[3].startswith("= 0.3.1, build "))
 
-    def test_the_build_number_written_is_the_commit_count(self):
-        self.commit("feat: .md link navigation")
-        counted = int(self.git("rev-list", "--count", "HEAD").strip())
-        # Not the fixture's own 71, so a write that changed nothing cannot pass.
-        self.assertNotEqual(counted, 71)
-        self.run_main()
-        spots = version_spots(self.pbxproj.read_text())
-        self.assertEqual(spots["CURRENT_PROJECT_VERSION"][1], str(counted))
-        # Taken before the release commit, which is therefore not in it.
-        after = int(self.git("rev-list", "--count", "HEAD").strip())
-        self.assertEqual(after, counted + 1)
+    def test_a_breaking_footer_or_a_bang_infers_no_major(self):
+        self.tag("v0.2.6")
+        self.commit("feat!: the bridge changed", body="BREAKING CHANGE: the old one is gone")
+        self.assertEqual(self.version(), "0.3.0")
 
-    def test_a_merge_is_no_changelog_entry_but_is_still_counted_in_the_build(self):
-        # mdql's own history has merges in it — 71 commits, 69 without them —
-        # and the two readings of that history pull opposite ways, which is why
-        # one test holds both.
-        self.git("checkout", "--quiet", "-b", "side")
-        self.commit("fix: done on the side branch")
+    def test_a_merge_counts_its_commits_once_and_itself_not_at_all(self):
+        self.tag("v0.2.6")
+        self.git("checkout", "--quiet", "-b", "topic")
+        self.commit("fix: on the branch")
         self.git("checkout", "--quiet", "main")
-        self.commit("feat: done on main")
-        self.git("merge", "--no-ff", "-m", "Merge pull request #14 from side", "side")
+        self.commit("docs: on main meanwhile")
+        self.git("merge", "--quiet", "--no-ff", "-m", "Merge branch 'topic'", "topic")
+        reading = read(self.root)
+        # "Merge branch 'topic'" is unprefixed: counted, it would be a second patch.
+        self.assertEqual(str(reading.version), "0.2.7")
+        self.assertNotIn("Merge branch 'topic'", [c.subject for c in reading.commits])
 
-        counted = int(self.git("rev-list", "--count", "HEAD").strip())
-        without = int(self.git("rev-list", "--count", "--no-merges", "HEAD").strip())
-        self.assertNotEqual(counted, without, "no merge commit was made, so this proves nothing")
+    def test_the_build_number_counts_every_commit_merges_included(self):
+        self.tag("v0.2.6")
+        self.git("checkout", "--quiet", "-b", "topic")
+        self.commit("fix: on the branch")
+        self.git("checkout", "--quiet", "main")
+        self.commit("docs: on main meanwhile")
+        self.git("merge", "--quiet", "--no-ff", "-m", "Merge branch 'topic'", "topic")
+        # Import, fix, docs, merge. Dropping the merge would let it go down later,
+        # which macOS reads as a downgrade.
+        self.assertEqual(read(self.root).build, 4)
+        code, out, _ = self.run_main("--build")
+        self.assertEqual((code, out), (0, "4\n"))
 
-        self.run_main()
+    def test_a_later_major_tag_is_the_new_baseline(self):
+        self.tag("v0.2.6")
+        self.commit("feat: a", "fix: b")
+        self.assertEqual(self.version(), "0.3.1")
+        self.tag("v1.0.0")
+        self.assertEqual(self.version(), "1.0.0")
+        self.commit("fix: c", "feat: d", "fix: e")
+        self.assertEqual(self.version(), "1.1.1")
 
-        changelog = self.changelog.read_text()
-        self.assertIn("- done on the side branch", changelog)
-        self.assertIn("- done on main", changelog)
-        # A merge subject carries no prefix, so read as a commit it becomes a
-        # patch under **Other** — an entry saying nothing, and enough on its own
-        # to lift a batch of pure `docs` out of "nothing to release".
-        self.assertNotIn("Merge pull request", changelog)
-        # The other reading: this is CFBundleVersion, and dropping the merges
-        # from the count would write 69 where 71 already shipped — a number that
-        # went *down*, which macOS treats as a downgrade.
-        self.assertEqual(
-            version_spots(self.pbxproj.read_text())["CURRENT_PROJECT_VERSION"][1],
-            str(counted),
-        )
+    def test_the_highest_version_wins_not_the_last_string(self):
+        self.tag("v0.9.0")
+        self.commit("docs: a")
+        self.tag("v0.10.0")
+        self.commit("fix: b")
+        # Plain string order puts v0.9.0 above v0.10.0.
+        self.assertEqual(self.version(), "0.10.1")
 
-    def test_the_release_commit_holds_only_the_paths_the_bump_wrote(self):
-        # A shared checkout with another session's work already staged. It must
-        # be exactly as staged afterwards, and nowhere in the release commit:
-        # a `git commit` without a pathspec commits the whole index, and the tag
-        # then points at somebody else's half-finished work.
-        self.commit("feat: .md link navigation")
-        (self.root / "OTHER.swift").write_text("struct Other {}\n")
-        self.git("add", "OTHER.swift")
-        (self.root / "README.md").write_text("mdql, edited in another session\n")
-        self.git("add", "README.md")
+    def test_a_tag_on_a_commit_head_does_not_contain_is_no_baseline(self):
+        self.tag("v0.2.6")
+        self.git("checkout", "--quiet", "-b", "abandoned")
+        self.commit("feat: never merged")
+        self.tag("v5.0.0")
+        self.git("checkout", "--quiet", "main")
+        self.commit("fix: on main")
+        self.assertEqual(self.version(), "0.2.7")
 
-        self.run_main()
-
-        self.assertEqual(
-            sorted(self.git("show", "--name-only", "--format=", "HEAD").split()),
-            sorted(["CHANGELOG.md", PBXPROJ]),
-        )
-        self.assertEqual(
-            self.git("status", "--porcelain").strip().splitlines(),
-            ["A  OTHER.swift", "M  README.md"],
-        )
-
-    def test_a_crlf_project_file_keeps_its_endings_and_moves_four_lines(self):
-        # `write_version` handles CRLF, but `main()` read the file with
-        # `Path.read_text()`, whose universal-newline decoding turned every
-        # \r\n into \n before that code was ever reached — and wrote LF back.
-        # The release commit then rewrote all thousand lines: 1032 insertions,
-        # 1032 deletions, a diff nobody can review, over four changed values.
-        self.pbxproj.write_bytes(PBXPROJ_FIXTURE.replace("\n", "\r\n").encode())
-        self.git("commit", "-m", "chore: check the project out with CRLF", "--", PBXPROJ)
-        self.commit("feat: .md link navigation")
-
-        self.run_main()
-
-        raw = self.pbxproj.read_bytes()
-        self.assertNotIn(b"\n", raw.replace(b"\r\n", b""), "a line lost its CR")
-        self.assertEqual(read_version(self.pbxproj.read_text()), Version(0, 2, 0))
-        stat = self.git("show", "--numstat", "--format=", "HEAD", "--", PBXPROJ).split()
-        self.assertEqual(
-            stat[:2],
-            ["4", "4"],
-            f"the release rewrote more than the four version values: {stat}",
-        )
-
-    def test_the_tag_is_annotated_so_follow_tags_will_carry_it(self):
-        # `git push --follow-tags` pushes annotated tags and silently skips
-        # lightweight ones, so this one word decides whether a release ever
-        # reaches origin.
-        self.commit("feat: .md link navigation")
-        self.run_main()
-        self.assertEqual(self.git("cat-file", "-t", "v0.2.0").strip(), "tag")
-        self.assertIn("0.2.0", self.git("tag", "-n1", "--list", "v0.2.0"))
-
-    def test_only_the_commits_after_the_last_tag_are_read(self):
-        self.commit("feat: before the tag")
-        self.git("tag", "-a", "v0.1.0", "-m", "0.1.0")
-        self.commit("fix: after the tag")
-        code, out, _ = self.run_main("--dry-run")
-        self.assertEqual(code, 0)
-        self.assertIn("after the tag", out)
-        self.assertNotIn("before the tag", out)
-        self.assertIn("0.1.0 → 0.1.1", out)
-
-    def test_the_newest_tag_is_the_newest_version_not_the_last_string(self):
-        # v0.1.9 sorts above v0.1.10 as a string. Taken as the baseline it is a
-        # release behind, so everything already shipped in v0.1.10 is listed a
-        # second time under the next number — which is where a repository first
-        # reaches a two-digit part, and never before.
-        self.git("tag", "-a", "v0.1.9", "-m", "0.1.9")
-        self.commit("fix: already shipped in 0.1.10")
-        self.stamp_version(Version(0, 1, 10), "chore(release): 0.1.10")
-        self.git("tag", "-a", "v0.1.10", "-m", "0.1.10")
-        self.commit("fix: only in the next release")
-
-        code, out, _ = self.run_main()
-        self.assertEqual(code, 0)
-        self.assertIn("0.1.10 → 0.1.11", out)
-        changelog = self.changelog.read_text()
-        self.assertIn("- only in the next release", changelog)
-        self.assertNotIn("already shipped in 0.1.10", changelog)
-        self.assertIn("v0.1.11", self.tags())
-
-    def test_a_dirty_project_file_is_refused_without_writing_anything(self):
-        self.commit("feat: .md link navigation")
-        self.pbxproj.write_text(self.pbxproj.read_text() + "// a half-finished edit\n")
-        pbxproj, changelog, head = (
-            self.pbxproj.read_bytes(),
-            self.changelog.read_bytes(),
-            self.head(),
-        )
-        with self.assertRaises(SystemExit) as raised:
-            self.run_main()
-        self.assertIn(PBXPROJ, str(raised.exception))
-        self.assertEqual(self.pbxproj.read_bytes(), pbxproj)
-        self.assertEqual(self.changelog.read_bytes(), changelog)
-        self.assertEqual(self.head(), head)
-        self.assertEqual(self.tags(), [])
-
-    def test_an_untracked_file_the_bump_writes_is_refused_and_called_untracked(self):
-        # `git status --porcelain` answers `?? CHANGELOG.md` for a file that was
-        # never committed. The refusal is right — `git add` would sweep the
-        # whole file into the release commit — but under the words "already
-        # modified" the reader goes looking for an edit nobody made.
-        self.commit("feat: .md link navigation")
-        self.git("rm", "--cached", "--quiet", "--", "CHANGELOG.md")
-        self.git("commit", "-m", "chore: stop tracking the changelog")
-        head = self.head()
-        with self.assertRaises(SystemExit) as raised:
-            self.run_main()
-        message = str(raised.exception)
-        self.assertIn("?? CHANGELOG.md", message)
-        self.assertIn("untracked", message)
-        self.assertEqual(self.head(), head)
-        self.assertEqual(self.tags(), [])
-
-    def test_a_tag_ahead_of_the_project_is_refused_by_name(self):
-        # The undo run without its `git tag -d`: the project is back at 0.1.0
-        # while v0.2.0 still stands, so v0.2.0..HEAD is empty and every run from
-        # here would report "nothing to release" and exit 0, for ever.
-        self.commit("feat: .md link navigation")
-        self.git("tag", "-a", "v0.2.0", "-m", "0.2.0")
-        head = self.head()
-        with self.assertRaises(SystemExit) as raised:
-            self.run_main()
-        message = str(raised.exception)
-        self.assertIn("v0.2.0", message)
-        self.assertIn("0.1.0", message)
-        self.assertIn("git tag -d v0.2.0", message)
-        self.assertEqual(self.head(), head)
-
-    def test_a_tag_name_already_taken_is_refused_before_anything_is_written(self):
-        # Reachable past the guard above only when the newest tag names no
-        # version — a moving `vNightly`, here left behind on the tree the work
-        # started from — so there is nothing to compare the project against and
-        # the collision survives to the tag check.
+    def test_a_tag_that_names_no_version_is_no_baseline(self):
+        self.tag("v0.2.6")
+        self.commit("fix: a")
         self.git("tag", "vNightly")
-        self.commit("feat: .md link navigation")
-        self.git("tag", "-a", "v0.2.0", "-m", "0.2.0")
-        newest = self.git("tag", "--list", "v*", "--sort=-v:refname").split()[0]
-        if newest != "vNightly":
-            self.skipTest(f"this git sorts {newest} newest; the case needs vNightly there")
-        pbxproj, head = self.pbxproj.read_bytes(), self.head()
-        with self.assertRaises(SystemExit) as raised:
-            self.run_main()
-        self.assertIn("v0.2.0 already exists", str(raised.exception))
-        # The tag it could not read is named rather than passed over in silence.
-        self.assertIn("vNightly", self.warned)
-        self.assertEqual(self.pbxproj.read_bytes(), pbxproj)
-        self.assertEqual(self.head(), head)
+        self.git("tag", "v0.3.0-rc1")
+        self.assertEqual(self.version(), "0.2.7")
 
-    def test_a_failing_hook_is_reported_in_gits_own_words(self):
-        # captured output with no handler is output nobody sees: the user got a
-        # CalledProcessError traceback and never learned the hook had spoken.
-        self.commit("feat: .md link navigation")
-        hook = self.hooks / "pre-commit"
-        hook.write_text("#!/bin/sh\necho 'pre-commit: the suite is red' >&2\nexit 3\n")
-        hook.chmod(0o755)
-        with self.assertRaises(SystemExit) as raised:
-            self.run_main()
-        message = str(raised.exception)
-        self.assertIn("pre-commit: the suite is red", message)
-        self.assertIn("git commit", message)
-        self.assertRegex(message, r"failed \(exit \d+\)")
-        # The commit failed, so nothing was tagged: the run stopped where it broke.
-        self.assertEqual(self.tags(), [])
+    def test_a_lightweight_tag_is_a_baseline_too(self):
+        self.git("tag", "v0.2.6")
+        self.commit("fix: a")
+        self.assertEqual(self.version(), "0.2.7")
+
+    def test_no_tag_at_all_is_refused_by_name(self):
+        self.commit("fix: a")
+        with self.assertRaises(VersionError) as raised:
+            read(self.root)
+        self.assertIn("no vX.Y.Z tag is reachable from HEAD", str(raised.exception))
+        code, out, err = self.run_main()
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("git fetch --tags", err)
+
+    def test_a_shallow_clone_is_refused(self):
+        self.tag("v0.2.6")
+        self.commit("fix: a", "fix: b")
+        shallow = self.base / "shallow"
+        self.git("clone", "--quiet", "--depth", "1", f"file://{self.root}", str(shallow), cwd=self.base)
+        with self.assertRaises(VersionError) as raised:
+            read(shallow)
+        self.assertIn("shallow", str(raised.exception))
+
+    def test_the_badge_is_the_version_and_the_commit(self):
+        self.tag("v0.2.6")
+        reading = read(self.root)
+        short = self.git("rev-parse", "--short", "HEAD").strip()
+        self.assertEqual(reading.badge, f"0.2.6 ({short})")
+
+    def test_an_edit_to_a_tracked_file_marks_the_badge_dirty(self):
+        self.tag("v0.2.6")
+        (self.root / "README.md").write_text("edited\n")
+        self.assertTrue(read(self.root).badge.endswith("-dirty)"))
+        self.git("add", "README.md")
+        self.assertTrue(read(self.root).badge.endswith("-dirty)"), "staged counts too")
+
+    def test_an_untracked_file_does_not(self):
+        self.tag("v0.2.6")
+        (self.root / "scratch.txt").write_text("not in any build\n")
+        self.assertFalse(read(self.root).dirty)
+
+    def test_write_puts_version_build_and_badge_one_per_line(self):
+        self.tag("v0.2.6")
+        self.commit("fix: a")
+        stamp = self.base / "out" / "mdql-version.stamp"
+        code, _, _ = self.run_main("--write", str(stamp))
+        self.assertEqual(code, 0)
+        version, build, badge = stamp.read_text().splitlines()
+        self.assertEqual((version, build), ("0.2.7", "2"))
+        self.assertRegex(badge, r"^0\.2\.7 \([0-9a-f]{7,}\)$")
+
+    def test_write_leaves_an_unchanged_stamp_untouched(self):
+        self.tag("v0.2.6")
+        stamp = self.base / "mdql-version.stamp"
+        self.run_main("--write", str(stamp))
+        os.utime(stamp, (1_000_000, 1_000_000))
+        self.run_main("--write", str(stamp))
+        self.assertEqual(stamp.stat().st_mtime, 1_000_000)
+
+
+# ---- the build ---------------------------------------------------------------
+
+READING = Reading(
+    tag="v0.2.6",
+    baseline=Version(0, 2, 6),
+    commits=(),
+    version=Version(0, 2, 7),
+    build=91,
+    short="a1b2c3d",
+    dirty=False,
+)
+
+
+def write_plist(path: pathlib.Path, **keys) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        plistlib.dump({"CFBundleIdentifier": "com.mdql.app.test", **keys}, f)
+
+
+@unittest.skipUnless(shutil.which("plutil"), "plutil is macOS's")
+class StampScriptTests(unittest.TestCase):
+    """scripts/stamp-version.sh, as the Stamp version build phases run it."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = pathlib.Path(tmp.name)
+        self.stamp = self.dir / "mdql-version.stamp"
+        self.stamp.write_text(stamp_text(READING))
+        # As ProcessInfoPlistFile leaves it: the source Info.plists carry no version.
+        self.plist = self.dir / "mdql.app/Contents/Info.plist"
+        write_plist(self.plist)
+
+    def stamp_version(self, *args):
+        return subprocess.run(
+            [str(SCRIPTS / "stamp-version.sh"), *map(str, args)], capture_output=True, text=True
+        )
+
+    def info(self):
+        with open(self.plist, "rb") as f:
+            return plistlib.load(f)
+
+    def test_it_writes_both_keys_into_the_plist(self):
+        done = self.stamp_version(self.stamp, self.plist)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        info = self.info()
+        self.assertEqual(info["CFBundleShortVersionString"], "0.2.7")
+        self.assertEqual(info["CFBundleVersion"], "91")
+        self.assertEqual(info["CFBundleIdentifier"], "com.mdql.app.test")
+
+    def test_it_replaces_what_an_earlier_build_stamped(self):
+        write_plist(self.plist, CFBundleShortVersionString="0.2.6", CFBundleVersion="90")
+        self.stamp_version(self.stamp, self.plist)
+        self.assertEqual(self.info()["CFBundleVersion"], "91")
+
+    def test_a_binary_plist_is_stamped_too(self):
+        with open(self.plist, "wb") as f:
+            plistlib.dump({"CFBundleIdentifier": "x"}, f, fmt=plistlib.FMT_BINARY)
+        done = self.stamp_version(self.stamp, self.plist)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.info()["CFBundleShortVersionString"], "0.2.7")
+
+    def test_a_third_argument_gets_the_badge(self):
+        badge = self.dir / "mdqlPreview.appex/Contents/Resources/version.txt"
+        self.stamp_version(self.stamp, self.plist, badge)
+        self.assertEqual(badge.read_text(), "0.2.7 (a1b2c3d)\n")
+
+    def test_a_missing_stamp_file_fails_and_says_who_writes_it(self):
+        done = self.stamp_version(self.dir / "nowhere", self.plist)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("mdql-version target", done.stderr)
+        self.assertNotIn("CFBundleVersion", self.info())
+
+    def test_a_short_stamp_file_fails_and_shows_it(self):
+        self.stamp.write_text("0.2.7\n")
+        done = self.stamp_version(self.stamp, self.plist)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("one per line", done.stderr)
+        self.assertNotIn("CFBundleShortVersionString", self.info())
+
+
+class CheckAppTests(unittest.TestCase):
+    """`--check`: what make install and make dist ask of a built mdql.app."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.app = pathlib.Path(tmp.name) / "mdql.app"
+        self.build(version="0.2.7", build="91")
+
+    def build(self, version, build, appex_build=None, badge="0.2.7 (a1b2c3d)"):
+        for sub in ("", APPEX, XPC):
+            write_plist(
+                self.app / sub / "Contents/Info.plist" if sub else self.app / "Contents/Info.plist",
+                CFBundleShortVersionString=version,
+                CFBundleVersion=appex_build if (sub == APPEX and appex_build) else build,
+            )
+        (self.app / BADGE).parent.mkdir(parents=True, exist_ok=True)
+        (self.app / BADGE).write_text(badge + "\n")
+
+    def test_a_build_that_carries_it_throughout_passes(self):
+        self.assertEqual(check_app(self.app, READING), [])
+
+    def test_a_dirty_badge_passes_since_the_tree_may_have_changed_since(self):
+        self.build(version="0.2.7", build="91", badge="0.2.7 (a1b2c3d-dirty)")
+        self.assertEqual(check_app(self.app, READING), [])
+
+    def test_an_appex_that_disagrees_with_its_app_is_named(self):
+        self.build(version="0.2.7", build="91", appex_build="90")
+        self.assertEqual(
+            check_app(self.app, READING), ["mdqlPreview.appex: CFBundleVersion is '90', not '91'"]
+        )
+
+    def test_a_build_of_another_version_is_named_in_every_bundle(self):
+        self.build(version="0.2.6", build="91", badge="0.2.6 (a1b2c3d)")
+        problems = check_app(self.app, READING)
+        self.assertEqual(len(problems), 4, problems)
+        self.assertTrue(problems[0].startswith("mdql.app: CFBundleShortVersionString is '0.2.6'"))
+        self.assertIn("version.txt reads", problems[3])
+
+    def test_a_badge_of_another_commit_is_refused(self):
+        self.build(version="0.2.7", build="91", badge="0.2.7 (fffffff)")
+        self.assertEqual(
+            check_app(self.app, READING), ["version.txt reads '0.2.7 (fffffff)', not '0.2.7 (a1b2c3d)'"]
+        )
+
+    def test_a_bundle_with_no_info_plist_is_named(self):
+        (self.app / XPC / "Contents/Info.plist").unlink()
+        (problem,) = check_app(self.app, READING)
+        self.assertTrue(problem.startswith("open-url.xpc: cannot read"), problem)
+
+
+# ---- this repository's own project -------------------------------------------
+
+
+class ProjectTests(unittest.TestCase):
+    """The project as it is checked in: the Xcode path a build without make takes."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pbxproj = (REPO / "mdql.xcodeproj/project.pbxproj").read_text()
+
+    def block(self, ident: str) -> str:
+        """One object's `{ … }` body, by its id."""
+        m = re.search(rf"^\t\t{ident} /\* .*? \*/ = {{$", self.pbxproj, re.MULTILINE)
+        self.assertIsNotNone(m, f"no object {ident}")
+        return self.pbxproj[m.start() : self.pbxproj.index("\n\t\t};\n", m.start())]
+
+    def target(self, name: str) -> str:
+        m = re.search(
+            rf"^\t\t(\w+) /\* {re.escape(name)} \*/ = {{\n\t\t\tisa = PBX(Native|Aggregate)Target;",
+            self.pbxproj,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(m, f"no target {name}")
+        return self.block(m.group(1))
+
+    def test_no_version_is_stored_in_the_project(self):
+        self.assertIsNone(
+            re.search(r"^\s*(MARKETING_VERSION|CURRENT_PROJECT_VERSION) = ", self.pbxproj, re.MULTILINE)
+        )
+
+    def test_no_info_plist_carries_a_version_of_its_own(self):
+        for plist in ("mdql/Info.plist", "mdqlPreview/Info.plist", "mdql-open-url/Info.plist"):
+            text = (REPO / plist).read_text()
+            self.assertNotIn("CFBundleShortVersionString", text, plist)
+            self.assertNotIn("<key>CFBundleVersion</key>", text, plist)
+
+    def test_the_version_target_computes_it_once_per_build(self):
+        target = self.target("mdql-version")
+        (phase,) = re.findall(r"(\w+) /\* Compute version \*/", target)
+        body = self.block(phase)
+        self.assertIn("alwaysOutOfDate = 1;", body)
+        self.assertIn("scripts/version.py --write", body)
+        self.assertIn('"$(BUILT_PRODUCTS_DIR)/mdql-version.stamp",', body)
+
+    def test_every_bundle_target_depends_on_it_and_stamps_its_plist(self):
+        dependency_ids = {
+            m.group(1)
+            for m in re.finditer(
+                r"^\t\t(\w+) /\* PBXTargetDependency \*/ = \{\n\t\t\tisa = PBXTargetDependency;\n"
+                r"\t\t\ttarget = \w+ /\* mdql-version \*/;",
+                self.pbxproj,
+                re.MULTILINE,
+            )
+        }
+        for name in ("mdql", "mdqlPreview", "mdql-open-url"):
+            with self.subTest(target=name):
+                target = self.target(name)
+                deps = set(re.findall(r"(\w+) /\* PBXTargetDependency \*/", target))
+                self.assertTrue(deps & dependency_ids, f"{name} does not depend on mdql-version")
+                (phase,) = re.findall(r"(\w+) /\* Stamp version \*/", target)
+                body = self.block(phase)
+                self.assertIn("alwaysOutOfDate = 1;", body)
+                self.assertIn('"$(BUILT_PRODUCTS_DIR)/mdql-version.stamp",', body)
+                self.assertIn('"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",', body)
+                self.assertIn("scripts/stamp-version.sh", body)
+
+    def test_only_the_extension_writes_the_badge(self):
+        for name, writes in (("mdql", False), ("mdqlPreview", True), ("mdql-open-url", False)):
+            (phase,) = re.findall(r"(\w+) /\* Stamp version \*/", self.target(name))
+            self.assertEqual("version.txt" in self.block(phase), writes, name)
+
+    def test_the_apps_stamp_runs_after_it_embeds_the_extension(self):
+        # The app's Info.plist is processed only once the appex is embedded, so a
+        # stamp ahead of the embed is a dependency cycle and the build fails.
+        phases = self.target("mdql").split("buildPhases = (")[1].split(");")[0]
+        self.assertLess(phases.index("Embed Foundation Extensions"), phases.index("Stamp version"))
+        self.assertLess(phases.index("Stamp version"), phases.index("Install & Register"))
 
 
 if __name__ == "__main__":

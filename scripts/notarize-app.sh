@@ -56,9 +56,9 @@ NOTARY_TIMEOUT="30m"
 #
 # The output name is required rather than defaulted. There is exactly one name a
 # release can use — `make dist` passes build/dist/mdql-<version>.zip, and `make
-# release` refuses to publish anything else — and a default would have to re-read
-# MARKETING_VERSION out of the pbxproj, putting a second reader of the version in the
-# tree to silently drift from the Makefile's. An unnamed by-hand run producing an
+# release` refuses to publish anything else — and a default would have to compute
+# the version a second time, a second reader in the tree free to disagree with the
+# Makefile's, which asks once per run. An unnamed by-hand run producing an
 # unpublishable mdql.zip is the failure this replaces with an instant usage error.
 USAGE="usage: scripts/notarize-app.sh <path/to/mdql.app> <output.zip>   (make dist: build/dist/mdql-<version>.zip)"
 APP="${1:?"$USAGE"}"
