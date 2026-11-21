@@ -38,6 +38,8 @@ Skipping the push does not fail late: `make release` refuses until the tag is on
 
 The version lives in `mdql.xcodeproj/project.pbxproj` as project-level `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, inherited by all five targets. **Never edit them by hand, and never add a target-level override**: macOS refuses to load an appex whose `CFBundleVersion` disagrees with its containing app's, and `scripts/version.py` refuses any other shape (docs/releases.md → "Where the number lives").
 
+**Every commit subject starts with a conventional prefix**, since the version is read from them (docs/releases.md → "The bump"): `feat:` only for a user-visible feature big enough to move the minor version; `fix:` or `perf:` for a bug fix or a small user-visible change (a patch); `chore:`, `docs:`, `ci:`, `test:`, `build:` or `refactor:` for what users never see (no bump). Never `!` or a `BREAKING CHANGE:` footer: the major is Lars's call alone.
+
 ## Architecture
 
 macOS QuickLook preview extension for Markdown files. Five Xcode targets:
