@@ -1,6 +1,12 @@
 import XCTest
 import Markdown
 
+/// The tags GFM's tagfilter escapes, plus `noscript` and `template`: each makes
+/// the browser read what follows as raw text or inert content, up to its end
+/// tag or the end of the file.
+let tagfilterTags = ["title", "textarea", "style", "xmp", "iframe", "noembed", "noframes",
+                     "script", "plaintext", "noscript", "template"]
+
 final class MarkdownRendererTests: XCTestCase {
 
     private func fixtureURL(_ name: String) -> URL {
@@ -255,6 +261,92 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertFalse(html.contains("&amp;amp;"), "Must not double-escape; got: \(html)")
     }
 
+    // MARK: - Tagfilter
+
+    func testTagfilterEscapesRawTextTagsInline() {
+        for tag in tagfilterTags {
+            let mixed = mixedCase(tag)
+            let html = MarkdownRenderer.renderBody(markdown: "a <\(mixed)>b</\(mixed)> c")
+            XCTAssertTrue(html.contains("&lt;\(mixed)>b&lt;/\(mixed)>"), "<\(mixed)> must show as text; got: \(html)")
+            XCTAssertNil(html.range(of: "<\(tag)", options: .caseInsensitive), "No live <\(tag)> may remain; got: \(html)")
+            XCTAssertNil(html.range(of: "</\(tag)", options: .caseInsensitive), "No live </\(tag)> may remain; got: \(html)")
+        }
+    }
+
+    func testTagfilterEscapesRawTextTagsInBlocks() {
+        for tag in tagfilterTags {
+            let mixed = mixedCase(tag)
+            let html = MarkdownRenderer.renderBody(markdown: "<\(mixed) class=\"x\">\nb\n</\(mixed)>\n\nAfter.")
+            XCTAssertTrue(html.contains("&lt;\(mixed) class=\"x\">"), "<\(mixed)> must show as text; got: \(html)")
+            XCTAssertNil(html.range(of: "<\(tag)", options: .caseInsensitive), "No live <\(tag)> may remain; got: \(html)")
+            XCTAssertNil(html.range(of: "</\(tag)", options: .caseInsensitive), "No live </\(tag)> may remain; got: \(html)")
+        }
+    }
+
+    func testTagfilterCatchesEveryWayABrowserEndsTheTagName() {
+        // The browser's tag name ends at whitespace, `/` or `>`, so each of
+        // these opens a <title>; `<title-card>` names another element.
+        for raw in ["<title/>", "<title\tx>", "<title\nx>", "<TITLE >"] {
+            let html = MarkdownRenderer.renderBody(markdown: "a \(raw) b")
+            XCTAssertNil(html.range(of: "<title", options: .caseInsensitive),
+                         "\(raw.debugDescription) must not stay live; got: \(html)")
+        }
+        let html = MarkdownRenderer.renderBody(markdown: "a <title-card> b")
+        XCTAssertTrue(html.contains("<title-card>"), "Only the listed tags are filtered; got: \(html)")
+    }
+
+    func testTagfilterLeavesOtherHTMLLive() {
+        let html = MarkdownRenderer.renderBody(markdown: """
+        <details><summary>More</summary>Body</details>
+
+        Press <kbd>⌘</kbd>, line<br>break, <img src="a.png" alt="a">.
+        """)
+        for tag in ["<details>", "<summary>", "<kbd>", "<br>", "<img src="] {
+            XCTAssertTrue(html.contains(tag), "\(tag) must stay live HTML; got: \(html)")
+        }
+    }
+
+    // MARK: - Content Security Policy
+
+    func testOnlyMdqlsOwnScriptsCarryThePagesNonce() throws {
+        let html = MarkdownRenderer.render(markdown: "# Title\n\n- [ ] task", showBackButton: true, interactive: true)
+        let policy = try XCTUnwrap(firstMatch(of: #"<meta http-equiv="Content-Security-Policy" content="([^"]*)">"#, in: html),
+                                   "The page must carry a Content-Security-Policy")
+        let nonce = try XCTUnwrap(firstMatch(of: #"script-src 'nonce-([^']+)'"#, in: policy), "script-src must name a nonce")
+        XCTAssertFalse(policy.contains("unsafe-inline"), policy)
+        XCTAssertFalse(policy.contains("unsafe-eval"), policy)
+        XCTAssertTrue(policy.contains("object-src 'none'"), policy)
+        XCTAssertTrue(policy.contains("base-uri 'none'"), policy)
+
+        let scripts = html.components(separatedBy: "<script").dropFirst()
+        XCTAssertFalse(scripts.isEmpty, "mdql's own script must be on the page")
+        for script in scripts {
+            XCTAssertTrue(script.hasPrefix(" nonce=\"\(nonce)\">"), "Every mdql script must carry the nonce: <script\(script.prefix(40))")
+        }
+        XCTAssertNil(html.range(of: #"\son[a-z]+\s*="#, options: .regularExpression),
+                     "mdql's markup must not use inline event handlers, which the policy blocks")
+    }
+
+    func testEachRenderHasItsOwnNonce() {
+        let pattern = #"'nonce-([^']+)'"#
+        let first = firstMatch(of: pattern, in: MarkdownRenderer.render(markdown: "x"))
+        let second = firstMatch(of: pattern, in: MarkdownRenderer.render(markdown: "x"))
+        XCTAssertNotNil(first)
+        XCTAssertNotEqual(first, second, "A document must not be able to know the nonce in advance")
+    }
+
+    private func mixedCase(_ s: String) -> String {
+        String(s.enumerated().map { $0.offset.isMultiple(of: 2) ? Character($0.element.uppercased()) : $0.element })
+    }
+
+    private func firstMatch(of pattern: String, in s: String) -> String? {
+        // Literal patterns: one that does not compile is a bug in the test.
+        let regex = try! NSRegularExpression(pattern: pattern)
+        guard let match = regex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              let range = Range(match.range(at: 1), in: s) else { return nil }
+        return String(s[range])
+    }
+
     // MARK: - HTML Document Structure
 
     func testHTMLDocumentStructure() {
@@ -274,14 +366,6 @@ final class MarkdownRendererTests: XCTestCase {
         let html = MarkdownRenderer.render(markdown: "")
         XCTAssertTrue(html.hasPrefix("<!DOCTYPE html>"), "Empty input should still produce valid HTML")
         XCTAssertTrue(html.contains("class=\"markdown-body\""), "Should contain article wrapper")
-    }
-
-    func testLoadingSpinner() {
-        let html = MarkdownRenderer.render(markdown: "# Hello")
-        XCTAssertTrue(html.contains("id=\"mdql-loading\""), "Should contain loading spinner element")
-        XCTAssertTrue(html.contains("mdql-spin"), "Should contain spinner animation")
-        XCTAssertTrue(html.contains("display:none"), "Content should be hidden initially")
-        XCTAssertTrue(html.contains("getElementById('mdql-loading')"), "JS should remove spinner on load")
     }
 
     // MARK: - CSS

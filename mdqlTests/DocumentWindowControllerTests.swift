@@ -16,12 +16,17 @@ final class DocumentWindowControllerTests: XCTestCase {
         return url
     }
 
+    /// Loads `file` the way `MarkdownDocument` does: read, then handed over.
+    private func load(_ file: URL, into controller: DocumentWindowController) throws {
+        controller.load(try String(contentsOf: file, encoding: .utf8), readFrom: file)
+    }
+
     func testTitleIsTheFileNameWithItsExtension() throws {
         let dir = try makeTemporaryDirectory()
         let file = try makeMarkdownFile(named: "notes.md", in: dir)
 
         let controller = DocumentWindowController()
-        try controller.load(fileAt: file)
+        try load(file, into: controller)
 
         XCTAssertEqual(controller.window?.title, "notes.md")
     }
@@ -35,7 +40,7 @@ final class DocumentWindowControllerTests: XCTestCase {
         let file = try makeMarkdownFile(named: "notes.md", in: dir)
 
         let controller = DocumentWindowController()
-        try controller.load(fileAt: file)
+        try load(file, into: controller)
 
         XCTAssertEqual(controller.window?.representedURL?.resolvingSymlinksInPath(),
                        file.resolvingSymlinksInPath(),
@@ -51,8 +56,8 @@ final class DocumentWindowControllerTests: XCTestCase {
         let second = try makeMarkdownFile(named: "two.md", in: dir)
 
         let controller = DocumentWindowController()
-        try controller.load(fileAt: first)
-        try controller.load(fileAt: second)
+        try load(first, into: controller)
+        try load(second, into: controller)
 
         XCTAssertEqual(controller.window?.title, "two.md")
         XCTAssertEqual(controller.window?.representedURL?.resolvingSymlinksInPath(),

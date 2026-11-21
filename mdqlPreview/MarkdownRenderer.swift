@@ -52,11 +52,13 @@ public struct MarkdownRenderer {
     // MARK: - HTML Escaping
     // HTMLFormatter escapes text, code blocks and inline code itself. It still
     // writes `Link.destination`, `Image.source` and `Image.title` raw into
-    // `href="…"` / `src="…"` / `title="…"`, so we escape those on the tree
-    // before it formats. See docs/specs/2026-04-17-html-escaping-fix-design.md.
+    // `href="…"` / `src="…"` / `title="…"`, and raw HTML verbatim, so we
+    // escape those on the tree before it formats. See
+    // docs/specs/2026-04-17-html-escaping-fix-design.md.
 
     /// Escapes the URLs and titles that `HTMLFormatter` drops straight into
-    /// attribute values, before it does so.
+    /// attribute values, before it does so, and runs the tagfilter over the raw
+    /// HTML it would emit verbatim.
     ///
     /// Repairing the formatter's output with a regex cannot work here: once a
     /// destination containing `"` has been written out, the quote has already
@@ -75,8 +77,8 @@ public struct MarkdownRenderer {
 
         /// Raw inline HTML in a heading is shown, not run. `## Using <Component>`
         /// means what it says; nobody titles a section with a live element. Turning
-        /// the node into text lets the formatter escape it exactly once. Inline HTML
-        /// elsewhere still renders — see AGENTS.md.
+        /// the node into text lets the formatter escape it exactly once. Raw HTML
+        /// elsewhere still renders, less the tagfilter's tags — see AGENTS.md.
         mutating func visitHeading(_ heading: Heading) -> Markup? {
             let children = heading.children.map { child -> Markup in
                 guard let inlineHTML = child as? InlineHTML else { return child }
@@ -97,6 +99,39 @@ public struct MarkdownRenderer {
             image.title = image.title.map(MarkdownRenderer.escapeAttribute)
             return defaultVisit(image)
         }
+
+        mutating func visitInlineHTML(_ inlineHTML: InlineHTML) -> Markup? {
+            var inlineHTML = inlineHTML
+            inlineHTML.rawHTML = MarkdownRenderer.filteringRawTextTags(inlineHTML.rawHTML)
+            return inlineHTML
+        }
+
+        mutating func visitHTMLBlock(_ html: HTMLBlock) -> Markup? {
+            var html = html
+            html.rawHTML = MarkdownRenderer.filteringRawTextTags(html.rawHTML)
+            return html
+        }
+    }
+
+    // MARK: - Tagfilter
+    // GFM's tagfilter, plus `noscript` and `template`. Each of these tags makes
+    // the browser read what follows as raw text, or as inert template content,
+    // up to its end tag or the end of the file: one `<title>` in a paragraph
+    // swallowed the rest of the document. Escaping the `<` shows the tag as
+    // text, as on GitHub; every other tag (`<details>`, `<img>`, `<kbd>`) stays
+    // live.
+
+    /// The `<` of an open or close tag of a filtered name. A browser ends a tag
+    /// name at whitespace, `/`, `>` or the end of the input and ignores ASCII
+    /// case, so this matches exactly the tags it would open: `<title/x>` is a
+    /// <title>, `<title-card>` is not.
+    private static let rawTextTag = try! NSRegularExpression(
+        pattern: #"<(?=/?(?:title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext|noscript|template)(?:[\t\n\f\r />]|$))"#,
+        options: [.caseInsensitive]
+    )
+
+    static func filteringRawTextTags(_ html: String) -> String {
+        rawTextTag.stringByReplacingMatches(in: html, range: NSRange(html.startIndex..., in: html), withTemplate: "&lt;")
     }
 
     private static func escapeAttribute(_ s: String) -> String {
@@ -206,12 +241,22 @@ public struct MarkdownRenderer {
     /// titlebar headroom and top fade in preview.css to the standalone window.
     /// It is deliberately separate from `interactive` — QuickLook renders
     /// interactive too, but draws no chrome to make room for.
+    ///
+    /// Nothing on the page waits for the body to parse as written. mdql's one
+    /// script sits in `<head>`, ahead of anything the document brings, and runs
+    /// on DOMContentLoaded, which fires however the body ends — under an
+    /// unclosed `<!--` too. The Content-Security-Policy lets only scripts
+    /// carrying this render's nonce run, so a document's own `<script>`, its
+    /// `on…=` attributes and its `javascript:` links stay inert, on first load
+    /// and on live reload alike. `evaluateJavaScript` from Swift is not subject
+    /// to it. Images and styles load as they would without a policy.
     private static func wrapInHTMLDocument(body: String, title: String, showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
         let css = loadCSS()
         let version = loadVersion()
         let escapedTitle = escapeHTML(title)
+        let nonce = makeNonce()
         let backButtonHTML = showBackButton ? """
-        <div id="mdql-back" onclick="window.webkit.messageHandlers.mdql.postMessage({action:'goBack'})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
+        <div id="mdql-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
         """ : ""
         let interactiveCheckboxJS = interactive ? """
 
@@ -241,20 +286,11 @@ public struct MarkdownRenderer {
         <html lang="en">
         <head>
         <meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="script-src 'nonce-\(nonce)'; object-src 'none'; base-uri 'none'">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>\(escapedTitle)</title>
         <style>
         \(css)
-        @keyframes mdql-spin { to { transform: rotate(360deg); } }
-        #mdql-loading {
-            position: fixed; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 24px; height: 24px;
-            border: 2px solid var(--border-color, #ddd);
-            border-top-color: var(--link-color, #4183c4);
-            border-radius: 50%;
-            animation: mdql-spin 0.6s linear infinite;
-        }
         #mdql-back {
             position: fixed; top: 12px; left: 12px;
             width: 28px; height: 28px;
@@ -288,21 +324,12 @@ public struct MarkdownRenderer {
             #mdql-status { background: rgba(0,0,0,0.65); color: #ddd; }
         }
         </style>
-        </head>
-        <body\(appChrome ? " class=\"mdql-app\"" : "")>
-        \(backButtonHTML)
-        <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
-        <div id="mdql-loading"></div>
-        <div id="mdql-status"></div>
-        <article class="markdown-body" style="display:none;">
-        \(body)
-        </article>
-        <script>
-        (function() {
-            var loader = document.getElementById('mdql-loading');
-            var article = document.querySelector('.markdown-body');
-            if (loader) loader.remove();
-            if (article) article.style.display = '';
+        <script nonce="\(nonce)">
+        document.addEventListener('DOMContentLoaded', function() {
+            var back = document.getElementById('mdql-back');
+            if (back) back.addEventListener('click', function() {
+                window.webkit.messageHandlers.mdql.postMessage({action: 'goBack'});
+            });
 
             var toast = document.createElement('div');
             toast.id = 'mdql-toast';
@@ -378,11 +405,27 @@ public struct MarkdownRenderer {
                 }
             });
         \(interactiveCheckboxJS)
-        })();
+        });
         </script>
+        </head>
+        <body\(appChrome ? " class=\"mdql-app\"" : "")>
+        \(backButtonHTML)
+        <div id="mdql-version" style="position:fixed;top:6px;right:12px;font-size:10px;opacity:0.3;font-family:monospace;z-index:9998;pointer-events:none;">\(escapeHTML(version))</div>
+        <div id="mdql-status"></div>
+        <article class="markdown-body">
+        \(body)
+        </article>
         </body>
         </html>
         """
+    }
+
+    /// A fresh nonce for every page, so no document can know in advance the
+    /// one that would let its script run.
+    private static func makeNonce() -> String {
+        var generator = SystemRandomNumberGenerator()
+        let bytes = (0..<16).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+        return Data(bytes).base64EncodedString()
     }
 
     private static func loadCSS() -> String {

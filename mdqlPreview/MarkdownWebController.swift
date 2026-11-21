@@ -78,7 +78,14 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// `openMarkdown` go through the injected `readFile` closure.
     @discardableResult
     func loadMarkdownFile(at url: URL) throws -> Bool {
-        let markdown = try String(contentsOf: url, encoding: .utf8)
+        loadMarkdown(try String(contentsOf: url, encoding: .utf8), readFrom: url)
+        return true
+    }
+
+    /// Renders `markdown`, which the host has already read from `url`, as the
+    /// initial file: the back stack starts empty and `url` is watched from here
+    /// on. Lets a host that reads the file itself fail the open on a read error.
+    func loadMarkdown(_ markdown: String, readFrom url: URL) {
         let title = url.deletingPathExtension().lastPathComponent
         let html = MarkdownRenderer.render(markdown: markdown, title: title, interactive: interactive, appChrome: appChrome)
         fileWatcher?.stop()
@@ -86,7 +93,6 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         fileHistory.removeAll()
         webView.loadHTMLString(html, baseURL: nil)
         startWatching(url)
-        return true
     }
 
     /// Handles an openURL action. Exposed for testing.

@@ -77,11 +77,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
         return frame
     }
 
-    /// Loads a markdown file into the window's web view. The title follows via
-    /// `fileURLDidChange`, which also covers the files reached later by
-    /// following links inside the preview.
-    func load(fileAt url: URL) throws {
-        try controller.loadMarkdownFile(at: url)
+    /// Shows `markdown`, read from `url` by the document, in the window's web
+    /// view. The title follows via `fileURLDidChange`, which also covers the
+    /// files reached later by following links inside the preview.
+    func load(_ markdown: String, readFrom url: URL) {
+        controller.loadMarkdown(markdown, readFrom: url)
     }
 
     /// Titles the window with the file actually on screen, which is not always
