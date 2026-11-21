@@ -41,7 +41,7 @@ func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Err
 
 WKWebView spawns out-of-process XPC subprocesses (WebContent, GPU, Networking) that the sandbox blocks by default. The fix is adding the `com.apple.security.network.client` entitlement to the extension — WKWebView requires this even for local HTML because it communicates with its subprocesses via XPC. This was a known WebKit bug on macOS Big Sur (fixed in macOS 12 via WebKit Changeset 271895).
 
-Link clicks are intercepted in JavaScript and dispatched to Swift via `WKScriptMessageHandler`, where they are routed to one of three actions: `openURL` (http/https opened in the default browser via XPC), `openMarkdown` (relative `.md` link navigated in-place, scrolled to its `#section` if it has one), and `goBack` (pops the history stack).
+Link clicks are intercepted in JavaScript and dispatched to Swift via `WKScriptMessageHandler`, where they are routed to one of three actions: `openURL` (http/https opened in the default browser via XPC), `openMarkdown` (relative `.md` link navigated in-place, scrolled to its `#section` if it has one; a heading's id is GitHub's slug of its text), and `goBack` (pops the history stack).
 
 ### 3. FileWatcher (DispatchSource with `O_EVTONLY`)
 

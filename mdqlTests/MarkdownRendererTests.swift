@@ -23,7 +23,7 @@ final class MarkdownRendererTests: XCTestCase {
         [Link](https://example.com)
         """
         let html = MarkdownRenderer.render(markdown: md)
-        XCTAssertTrue(html.contains("<h1>"), "Should contain h1")
+        XCTAssertTrue(html.contains("<h1"), "Should contain h1")
         XCTAssertTrue(html.contains("<p>"), "Should contain p")
         XCTAssertTrue(html.contains("<a href="), "Should contain link")
         XCTAssertTrue(html.contains("<em>"), "Should contain em")
@@ -437,7 +437,7 @@ final class MarkdownRendererTests: XCTestCase {
     func testHeadingEscapesAngleBrackets() {
         let md = "## Using <Component>"
         let html = MarkdownRenderer.renderBody(markdown: md)
-        XCTAssertTrue(html.contains("<h2>Using &lt;Component&gt;</h2>"), "Heading content must be escaped; got: \(html)")
+        XCTAssertTrue(html.contains("<h2 id=\"using-component\">Using &lt;Component&gt;</h2>"), "Heading content must be escaped; got: \(html)")
     }
 
     func testLinkHrefEscapesAmpersand() {
@@ -555,7 +555,7 @@ final class MarkdownRendererTests: XCTestCase {
     func testPlainHeadingUnchanged() {
         // Regression guard: ordinary headings must not be mangled by the heading pass.
         let html = MarkdownRenderer.renderBody(markdown: "## Regular Heading")
-        XCTAssertTrue(html.contains("<h2>Regular Heading</h2>"), "Plain heading must render verbatim; got: \(html)")
+        XCTAssertTrue(html.contains("<h2 id=\"regular-heading\">Regular Heading</h2>"), "Plain heading must render verbatim; got: \(html)")
     }
 
     func testHeadingWithInlineCodeNoDoubleEscape() {
@@ -567,6 +567,54 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(html.contains("&lt;div&gt;"), "Angle brackets must be escaped once; got: \(html)")
         XCTAssertFalse(html.contains("&amp;lt;"), "Must not double-escape; got: \(html)")
         XCTAssertFalse(html.contains("&amp;amp;"), "Must not double-escape; got: \(html)")
+    }
+
+    // MARK: - Heading ids
+    // Each heading's id is GitHub's slug of its text, so that a link written
+    // for GitHub, `guide.md#setup` or `#setup`, names it.
+
+    /// The ids of the rendered headings, in order; nil for one without.
+    private func headingIDs(_ markdown: String) -> [String?] {
+        let html = MarkdownRenderer.renderBody(markdown: markdown)
+        let heading = try! NSRegularExpression(pattern: #"<h[1-6](?: id="([^"]*)")?>"#)
+        return heading.matches(in: html, range: NSRange(html.startIndex..., in: html)).map { match in
+            Range(match.range(at: 1), in: html).map { String(html[$0]) }
+        }
+    }
+
+    func testAHeadingsIdIsItsSlug() {
+        XCTAssertEqual(MarkdownRenderer.renderBody(markdown: "## Setup"), "<h2 id=\"setup\">Setup</h2>\n")
+    }
+
+    func testTheSlugIsLowercaseWithoutPunctuationAndDashesForSpaces() {
+        XCTAssertEqual(headingIDs("# Hello, World! (v2.0)"), ["hello-world-v20"])
+        XCTAssertEqual(headingIDs("# snake_case & kebab-case"), ["snake_case--kebab-case"])
+        XCTAssertEqual(headingIDs("# Two  spaces"), ["two--spaces"])
+    }
+
+    func testTheSlugKeepsLettersOfEveryScriptAndDropsSymbols() {
+        XCTAssertEqual(headingIDs("# Café über 日本"), ["café-über-日本"])
+        XCTAssertEqual(headingIDs("# 🎉 Party"), ["-party"])
+    }
+
+    func testTheSlugIsTheTextTheHeadingShows() {
+        XCTAssertEqual(headingIDs("## Using `code`, *emphasis* and [a link](other.md)"), ["using-code-emphasis-and-a-link"])
+        XCTAssertEqual(headingIDs("## Using <Component>"), ["using-component"])
+        XCTAssertEqual(headingIDs("Two\nlines\n==="), ["twolines"])
+    }
+
+    func testRepeatedSlugsAreNumbered() {
+        XCTAssertEqual(headingIDs("# Notes\n\n## Notes\n\n### Notes"), ["notes", "notes-1", "notes-2"])
+        // A heading whose own slug is a number taken already is numbered too.
+        XCTAssertEqual(headingIDs("# A\n\n# A\n\n# A-1"), ["a", "a-1", "a-1-1"])
+    }
+
+    func testAHeadingWithNoLettersOrDigitsHasNoId() {
+        XCTAssertEqual(MarkdownRenderer.renderBody(markdown: "## ???"), "<h2>???</h2>\n")
+    }
+
+    func testHeadingsInQuotesAndListsGetIdsInDocumentOrder() {
+        XCTAssertEqual(headingIDs("> ## Step\n\n- ## Step\n\n## Step"), ["step", "step-1", "step-2"])
     }
 
     // MARK: - Tagfilter
@@ -695,7 +743,7 @@ final class MarkdownRendererTests: XCTestCase {
     func testRenderFromURL() throws {
         let url = fixtureURL("basic")
         let html = try MarkdownRenderer.render(fileAt: url)
-        XCTAssertTrue(html.contains("<h1>"), "Should render headings from file")
+        XCTAssertTrue(html.contains("<h1"), "Should render headings from file")
         XCTAssertTrue(html.contains("<strong>"), "Should render bold from file")
     }
 
@@ -716,7 +764,7 @@ final class MarkdownRendererTests: XCTestCase {
 
     func testRenderBodyContainsMarkup() {
         let body = MarkdownRenderer.renderBody(markdown: "# Hello\n\nA **bold** word.")
-        XCTAssertTrue(body.contains("<h1>"), "renderBody should contain h1")
+        XCTAssertTrue(body.contains("<h1"), "renderBody should contain h1")
         XCTAssertTrue(body.contains("<strong>"), "renderBody should contain strong")
     }
 
@@ -729,7 +777,7 @@ final class MarkdownRendererTests: XCTestCase {
 
     func testRenderBodyEmpty() {
         let body = MarkdownRenderer.renderBody(markdown: "")
-        XCTAssertFalse(body.contains("<h1>"), "Empty input should produce no headings")
+        XCTAssertFalse(body.contains("<h1"), "Empty input should produce no headings")
     }
 
     // MARK: - Scaling
@@ -866,7 +914,7 @@ final class MarkdownRendererTests: XCTestCase {
         # Content
         """
         let html = MarkdownRenderer.render(markdown: md)
-        XCTAssertTrue(html.contains("<h1>"), "Body content should still render")
+        XCTAssertTrue(html.contains("<h1"), "Body content should still render")
         // The raw front matter text should not appear as markdown content
         let bodyHTML = MarkdownRenderer.renderBody(markdown: md)
         XCTAssertFalse(bodyHTML.contains("<hr"), "Front matter should not produce a horizontal rule")
@@ -914,7 +962,7 @@ final class MarkdownRendererTests: XCTestCase {
         """
         let body = MarkdownRenderer.renderBody(markdown: md)
         XCTAssertTrue(body.contains("class=\"front-matter\""), "renderBody should include front matter")
-        XCTAssertTrue(body.contains("<h1>"), "renderBody should include body content")
+        XCTAssertTrue(body.contains("<h1"), "renderBody should include body content")
     }
 
     func testFrontMatterFromFixtureFile() throws {
@@ -922,7 +970,7 @@ final class MarkdownRendererTests: XCTestCase {
         let html = try MarkdownRenderer.render(fileAt: url)
         XCTAssertTrue(html.contains("class=\"front-matter\""), "Fixture file should render front matter")
         XCTAssertTrue(html.contains("author:"), "Should contain author from fixture")
-        XCTAssertTrue(html.contains("<h1>"), "Should render body from fixture")
+        XCTAssertTrue(html.contains("<h1"), "Should render body from fixture")
     }
 
     // MARK: - Title from file path

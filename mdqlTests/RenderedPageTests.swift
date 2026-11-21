@@ -193,7 +193,6 @@ final class RenderedPageTests: XCTestCase {
     func testALinkToASectionOfAnotherFileOpensItThereAndBackReturns() throws {
         let shown = try show("[Section](two.md#sec)")
         let two = shown.file.deletingLastPathComponent().appendingPathComponent("two.md")
-        let filler = (1...200).map { "Line \($0)." }.joined(separator: "\n\n")
         try Data("Top.\n\n\(filler)\n\n<h2 id=\"sec\">Section</h2>\n\nSection text.\n\n\(filler)".utf8).write(to: two)
 
         let followed = expectation(description: "followed the link to two.md")
@@ -205,12 +204,36 @@ final class RenderedPageTests: XCTestCase {
 
         try evaluate("document.querySelector('a').click(); true", in: shown.webView)
         wait(for: [followed], timeout: 10)
-        try waitUntil("document.readyState === 'complete' && !!document.getElementById('sec')"
-                      + " && window.scrollY > 0"
-                      + " && Math.abs(document.getElementById('sec').getBoundingClientRect().top) < 2",
-                      in: shown.webView)
+        try waitUntilScrolled(to: "sec", in: shown.webView)
         try evaluate("document.getElementById('mdql-back').click(); true", in: shown.webView)
         wait(for: [wentBack], timeout: 10)
+    }
+
+    func testALinkToAHeadingOfAnotherFileScrollsToIt() throws {
+        let shown = try show("[Setup](two.md#setup)")
+        let two = shown.file.deletingLastPathComponent().appendingPathComponent("two.md")
+        try Data("Top.\n\n\(filler)\n\n## Setup\n\nSetup text.\n\n\(filler)".utf8).write(to: two)
+
+        let followed = expectation(description: "followed the link to two.md")
+        shown.controller.fileURLDidChange = { url in
+            if url?.lastPathComponent == "two.md" { followed.fulfill() }
+        }
+        try evaluate("document.querySelector('a').click(); true", in: shown.webView)
+        wait(for: [followed], timeout: 10)
+        try waitUntilScrolled(to: "setup", in: shown.webView)
+    }
+
+    func testALinkToAHeadingInTheSameFileScrollsToIt() throws {
+        let page = try show("[Setup](#setup)\n\n\(filler)\n\n## Setup\n\nSetup text.\n\n\(filler)").webView
+        try evaluate("document.querySelector('a').click(); true", in: page)
+        try waitUntilScrolled(to: "setup", in: page)
+        XCTAssertEqual(page.url?.absoluteString, "about:blank", "A jump within the page stays on mdql's page")
+    }
+
+    func testAPercentEncodedSameFileLinkScrollsToItsHeading() throws {
+        let page = try show("[Café](#caf%C3%A9)\n\n\(filler)\n\n## Café\n\nText.\n\n\(filler)").webView
+        try evaluate("document.querySelector('a').click(); true", in: page)
+        try waitUntilScrolled(to: "café", in: page)
     }
 
     // MARK: - A click flips that task's marker, and nothing else
@@ -655,6 +678,17 @@ final class RenderedPageTests: XCTestCase {
             var r = document.querySelector('\(selector)').getBoundingClientRect(); [r.left, r.top, r.width, r.height]
             """, in: page) as? [Double])
         return CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
+    }
+
+    /// Enough paragraphs that what follows them starts below the fold.
+    private let filler = (1...200).map { "Line \($0)." }.joined(separator: "\n\n")
+
+    /// Waits until the page has scrolled the element with `id` to its top.
+    private func waitUntilScrolled(to id: String, in page: WKWebView, file: StaticString = #filePath, line: UInt = #line) throws {
+        let target = "document.getElementById(\(String(reflecting: id)))"
+        try waitUntil("document.readyState === 'complete' && !!\(target) && window.scrollY > 0"
+                      + " && Math.abs(\(target).getBoundingClientRect().top) < 2",
+                      in: page, file: file, line: line)
     }
 
     /// Clicks `- [ ] task` on a page whose saves `answer` replies to, with the

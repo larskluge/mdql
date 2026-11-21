@@ -539,8 +539,9 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         // Cancel all link-activated navigations: a link opens through
-        // `handleOpenURL`, which opens it or says why not. Only a jump within
-        // mdql's own page (`about:blank#…`) is left alone.
+        // `handleOpenURL`, which opens it or says why not. A jump within
+        // mdql's own page (`about:blank#…`) opens nothing: the page scrolls
+        // to it itself (`__mdqlScrollTo`).
         if navigationAction.navigationType == .linkActivated {
             if let url = navigationAction.request.url, url.scheme?.lowercased() != "about" {
                 handleOpenURL(url.absoluteString)
@@ -561,9 +562,9 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 
     /// Shows the notices the page is due, once it can, and scrolls to the
-    /// anchor a section link named, once its file has loaded: the element with
-    /// that id, else the `<a>` with that name, as a browser resolves a
-    /// fragment. No such element leaves the page at the top.
+    /// anchor a section link named, once its file has loaded, as the page
+    /// scrolls to one in its own file (`__mdqlScrollTo`). No such element
+    /// leaves the page at the top.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if navigation === latestNavigation, !pageReady {
             pageReady = true
@@ -575,13 +576,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         }
         guard let pending = pendingAnchor, pending.navigation === navigation else { return }
         pendingAnchor = nil
-        webView.callAsyncJavaScript(
-            """
-            var target = document.getElementById(id)
-                || Array.from(document.getElementsByName(id)).find(function (el) { return el.tagName === 'A'; });
-            if (target) target.scrollIntoView();
-            """,
-            arguments: ["id": pending.id], in: nil, in: .page)
+        runInPage("window.__mdqlScrollTo(id)", ["id": pending.id])
     }
 }
 

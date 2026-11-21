@@ -145,7 +145,8 @@ public struct MarkdownRenderer {
 
     /// Escapes the URLs, titles and code-block languages that `HTMLFormatter`
     /// drops straight into attribute values, before it does so, and runs the
-    /// tagfilter over the raw HTML it would emit verbatim.
+    /// tagfilter over the raw HTML it would emit verbatim. Gives each heading
+    /// its id on the way (`HeadingIDs`), an attribute the formatter has none of.
     ///
     /// Repairing the formatter's output with a regex cannot work here: once a
     /// destination containing `"` has been written out, the quote has already
@@ -162,16 +163,27 @@ public struct MarkdownRenderer {
     private struct AttributeValueEscaper: LinearRewriter {
         typealias Result = Markup?
 
+        private var headingIDs = HeadingIDs()
+
         /// Raw inline HTML in a heading is shown, not run. `## Using <Component>`
         /// means what it says; nobody titles a section with a live element. Turning
         /// the node into text lets the formatter escape it exactly once. Raw HTML
         /// elsewhere still renders, less the tagfilter's tags — see AGENTS.md.
+        ///
+        /// The heading comes out as the HTML the formatter would write for it,
+        /// plus its id: its content formatted as the formatter formats it.
         mutating func visitHeading(_ heading: Heading) -> Markup? {
             let children = heading.children.map { child -> Markup in
                 guard let inlineHTML = child as? InlineHTML else { return child }
                 return Text(inlineHTML.rawHTML)
             }
-            return defaultVisit(heading.detached.withUncheckedChildren(children))
+            let shown = heading.detached.withUncheckedChildren(children)
+            let visited = defaultVisit(shown) ?? shown
+            let id = headingIDs.id(forText: visited.children.map(HeadingIDs.shownText).joined())
+            let tag = "h\(heading.level)"
+            return HTMLBlock("<\(tag)\(id.map { " id=\"\(MarkdownRenderer.escapeAttribute($0))\"" } ?? "")>"
+                             + visited.children.map { HTMLFormatter.format($0) }.joined()
+                             + "</\(tag)>\n")
         }
 
         mutating func visitLink(_ link: Link) -> Markup? {
@@ -207,6 +219,65 @@ public struct MarkdownRenderer {
             var html = html.detached
             html.rawHTML = MarkdownRenderer.filteringRawTextTags(html.rawHTML)
             return html
+        }
+    }
+
+    // MARK: - Heading ids
+    // A link written for GitHub names a heading by GitHub's slug of its text:
+    // `## Setup` is `guide.md#setup`, or `#setup` in its own file. Each heading
+    // gets that slug as its id, which is what a section link scrolls to.
+
+    /// The ids of a document's headings, given in document order: GitHub's
+    /// slug of each one's text, numbered `-1`, `-2` … when taken already.
+    private struct HeadingIDs {
+        /// Every id given, each with how many times its slug came again.
+        private var taken: [String: Int] = [:]
+
+        /// The next heading's id, nil when its slug is empty (`## ???`). As
+        /// GitHub's slugger does, a repeated slug takes the first number whose
+        /// id is free, so that `A`, `A`, `A-1` are `a`, `a-1`, `a-1-1`.
+        mutating func id(forText text: String) -> String? {
+            let slug = Self.slug(text)
+            var id = slug
+            while taken[id] != nil {
+                let repeats = taken[slug, default: 0] + 1
+                taken[slug] = repeats
+                id = "\(slug)-\(repeats)"
+            }
+            taken[id] = 0
+            return id.isEmpty ? nil : id
+        }
+
+        /// Lowercase, each space a `-`, and nothing kept but letters, marks,
+        /// digits, `-` and `_`: punctuation, symbols and emoji go.
+        static func slug(_ text: String) -> String {
+            var slug = String.UnicodeScalarView()
+            for scalar in text.lowercased().unicodeScalars {
+                switch (scalar, scalar.properties.generalCategory) {
+                case (" ", _):
+                    slug.append("-")
+                case ("-", _),
+                     (_, .uppercaseLetter), (_, .lowercaseLetter), (_, .titlecaseLetter), (_, .modifierLetter), (_, .otherLetter),
+                     (_, .nonspacingMark), (_, .spacingMark), (_, .enclosingMark),
+                     (_, .decimalNumber), (_, .letterNumber), (_, .connectorPunctuation):
+                    slug.append(scalar)
+                default:
+                    break
+                }
+            }
+            return String(slug)
+        }
+
+        /// The text a heading's `markup` shows, as the page's `textContent`
+        /// reads it: an image's alt text and a tag are not in it.
+        static func shownText(_ markup: Markup) -> String {
+            switch markup {
+            case let text as Text: text.string
+            case let code as InlineCode: code.code
+            case is SoftBreak, is LineBreak: "\n"
+            case is Image, is InlineHTML: ""
+            default: markup.children.map(shownText).joined()
+            }
         }
     }
 
@@ -539,10 +610,24 @@ public struct MarkdownRenderer {
                 }
             }
 
-            function noteName(href) {
-                var name = href.replace(/#.*$/, '').split('/').pop();
-                try { return decodeURIComponent(name); } catch (e) { return name; }
+            // Percent-decoded, or as written when it is not valid UTF-8 that way.
+            function decoded(text) {
+                try { return decodeURIComponent(text); } catch (e) { return text; }
             }
+
+            function noteName(href) {
+                return decoded(href.replace(/#.*$/, '').split('/').pop());
+            }
+
+            // Brings the place a fragment names to the top: the element with
+            // that id, else the <a> with that name, as a browser resolves a
+            // fragment. No such element leaves the page where it is. Swift
+            // calls it too, once a file a section link opened has loaded.
+            window.__mdqlScrollTo = function(id) {
+                var target = document.getElementById(id)
+                    || Array.from(document.getElementsByName(id)).find(function (el) { return el.tagName === 'A'; });
+                if (target) target.scrollIntoView();
+            };
 
             document.addEventListener('mouseover', function(e) {
                 var el = findLink(e.target);
@@ -566,15 +651,19 @@ public struct MarkdownRenderer {
 
             // Every link goes to Swift, which opens it or says why not: a web
             // link in the browser, mailto: in Mail, a relative link in place
-            // when it is Markdown. Only a jump within the page, and the
-            // javascript: links the CSP keeps inert, are left alone.
+            // when it is Markdown. A jump within the page scrolls it here, as
+            // a section link into another file does once that file loads.
+            // Only about: links, and the javascript: ones the CSP keeps inert,
+            // are left alone.
             document.addEventListener('click', function(e) {
                 var el = findLink(e.target);
                 if (!el) return;
                 var href = el.getAttribute('href') || '';
-                if (!href || href.charAt(0) === '#' || /^(about|javascript):/i.test(href)) return;
+                if (!href || /^(about|javascript):/i.test(href)) return;
                 e.preventDefault();
-                if (/^https?:/i.test(href)) {
+                if (href.charAt(0) === '#') {
+                    window.__mdqlScrollTo(decoded(href.slice(1)));
+                } else if (/^https?:/i.test(href)) {
                     var target = el.href || href;
                     var host;
                     try { host = new URL(target).host; } catch (err) { host = target; }
