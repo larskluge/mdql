@@ -27,6 +27,10 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// followed. Its folder bounds every file a link may open (`AccessPolicy`).
     private(set) var documentURL: URL?
 
+    /// The element to scroll to once `navigation` finishes loading its page:
+    /// the fragment of the `other.md#section` link that loaded it.
+    private var pendingAnchor: (navigation: WKNavigation, id: String)?
+
     /// Opens a URL externally (browser, Finder, etc.). Default is a no-op.
     var openURL: (URL) -> Void = { _ in }
 
@@ -34,10 +38,11 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     /// or nil on failure. Default is a no-op (no callback).
     var readFile: (URL, @escaping (String?) -> Void) -> Void = { _, _ in }
 
-    /// Toggles the `index`-th task-list checkbox in the currently loaded file.
-    /// Calls back with `true` on success, `false` on failure. The host app
-    /// writes the file directly; the QuickLook extension goes through XPC.
-    var toggleCheckbox: (Int, Bool, @escaping (Bool) -> Void) -> Void = { _, _, completion in completion(false) }
+    /// Sets the task-list marker at a UTF-8 offset in the currently loaded file's
+    /// text (the rendered checkbox's `data-cb-offset`) to checked or not, and
+    /// calls back on the main queue with the outcome. The host app writes the
+    /// file directly; the QuickLook extension goes through XPC.
+    var toggleCheckbox: (Int, Bool, @escaping (CheckboxToggleOutcome) -> Void) -> Void = { _, _, completion in completion(.failed) }
 
     /// Called whenever the rendered file changes — initial load, following a
     /// link to a sibling `.md`, or going back. Hosts use it to keep window
@@ -104,12 +109,13 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         documentURL = url
         fileURL = url
         fileHistory.removeAll()
+        pendingAnchor = nil
         loadPage(html)
         startWatching(url)
     }
 
     /// Handles an openURL action. Exposed for testing.
-    func handleOpenURL(_ urlString: String, background: Bool) {
+    func handleOpenURL(_ urlString: String) {
         guard let url = URL(string: urlString), !urlString.isEmpty else { return }
         do {
             try AccessPolicy.checkOpening(url)
@@ -121,21 +127,32 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 
     /// Handles a toggleCheckbox action posted from JS. Exposed for testing.
-    /// On failure, reverts the checkbox in the rendered page and shows a toast.
-    func handleToggleCheckbox(index: Int, checked: Bool) {
-        toggleCheckbox(index, checked) { [weak self] success in
-            guard !success, let self = self else { return }
-            DispatchQueue.main.async {
+    /// When the file has changed since the page was rendered, renders it again;
+    /// when the write fails, reverts the checkbox in the page and shows a toast.
+    func handleToggleCheckbox(offset: Int, checked: Bool) {
+        toggleCheckbox(offset, checked) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .toggled:
+                break
+            case .stale:
+                self.reloadContent()
+            case .failed:
                 self.webView.evaluateJavaScript(
-                    "window.__mdqlRevertCheckbox && window.__mdqlRevertCheckbox(\(index)); window.__mdqlShowToast && window.__mdqlShowToast('Couldn\\'t save change');"
+                    "window.__mdqlRevertCheckbox && window.__mdqlRevertCheckbox(\(offset)); window.__mdqlShowToast && window.__mdqlShowToast('Couldn\\'t save change');"
                 )
             }
         }
     }
 
-    /// Handles an openMarkdown action. Exposed for testing.
-    func handleOpenMarkdown(_ urlString: String) {
-        let decoded = urlString.removingPercentEncoding ?? urlString
+    /// Handles an openMarkdown action: `href` is a link's relative `.md` or
+    /// `.markdown` target, with or without a `#section`. Exposed for testing.
+    func handleOpenMarkdown(_ href: String) {
+        // The fragment names a place in the file, not part of its name, and each
+        // half is percent-decoded on its own: `%23` is a `#` in the name.
+        let parts = href.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let decoded = parts[0].removingPercentEncoding ?? parts[0]
+        let anchor = parts.count > 1 ? parts[1].removingPercentEncoding ?? parts[1] : ""
         guard let currentURL = self.fileURL,
               !decoded.isEmpty else { return }
 
@@ -151,7 +168,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         readFile(resolved) { [weak self] markdown in
             guard let self = self, let markdown = markdown else { return }
             self.fileHistory.append(currentURL)
-            self.showMarkdown(markdown, url: resolved)
+            self.showMarkdown(markdown, url: resolved, scrollingTo: anchor.isEmpty ? nil : anchor)
         }
     }
 
@@ -165,20 +182,26 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         }
     }
 
-    private func showMarkdown(_ markdown: String, url: URL) {
+    private func showMarkdown(_ markdown: String, url: URL, scrollingTo anchor: String? = nil) {
         fileWatcher?.stop()
         fileURL = url
         let title = url.deletingPathExtension().lastPathComponent
         let html = MarkdownRenderer.render(markdown: markdown, title: title, showBackButton: !fileHistory.isEmpty, interactive: interactive, appChrome: appChrome)
-        loadPage(html)
+        let navigation = loadPage(html)
+        if let navigation, let anchor {
+            pendingAnchor = (navigation, anchor)
+        } else {
+            pendingAnchor = nil
+        }
         startWatching(url)
     }
 
     /// Every page goes in through here, so that `decidePolicyFor` can tell
     /// mdql's own loads from a navigation the document asks for.
-    private func loadPage(_ html: String) {
+    @discardableResult
+    private func loadPage(_ html: String) -> WKNavigation? {
         pageLoadsPending += 1
-        webView.loadHTMLString(html, baseURL: nil)
+        return webView.loadHTMLString(html, baseURL: nil)
     }
 
     private func startWatching(_ url: URL) {
@@ -216,8 +239,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         switch action {
         case "openURL":
             if let urlString = body["url"] as? String {
-                let background = body["background"] as? Bool ?? false
-                handleOpenURL(urlString, background: background)
+                handleOpenURL(urlString)
             }
         case "openMarkdown":
             if let urlString = body["url"] as? String {
@@ -226,9 +248,8 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         case "goBack":
             goBack()
         case "toggleCheckbox":
-            if let index = body["index"] as? Int {
-                let checked = body["checked"] as? Bool ?? false
-                handleToggleCheckbox(index: index, checked: checked)
+            if let offset = body["offset"] as? Int, let checked = body["checked"] as? Bool {
+                handleToggleCheckbox(offset: offset, checked: checked)
             }
         default:
             break
@@ -243,7 +264,7 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
             if let url = navigationAction.request.url,
                let scheme = url.scheme,
                ["http", "https"].contains(scheme) {
-                handleOpenURL(url.absoluteString, background: false)
+                handleOpenURL(url.absoluteString)
             }
             decisionHandler(.cancel)
             return
@@ -258,6 +279,21 @@ final class MarkdownWebController: NSObject, WKNavigationDelegate, WKScriptMessa
         }
         AccessPolicy.log.error("Cancelled a navigation to \(navigationAction.request.url?.absoluteString ?? "no URL", privacy: .public): only mdql's own page loads")
         decisionHandler(.cancel)
+    }
+
+    /// Scrolls to the anchor a section link named, once its file has loaded:
+    /// the element with that id, else the `<a>` with that name, as a browser
+    /// resolves a fragment. No such element leaves the page at the top.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let pending = pendingAnchor, pending.navigation === navigation else { return }
+        pendingAnchor = nil
+        webView.callAsyncJavaScript(
+            """
+            var target = document.getElementById(id)
+                || Array.from(document.getElementsByName(id)).find(function (el) { return el.tagName === 'A'; });
+            if (target) target.scrollIntoView();
+            """,
+            arguments: ["id": pending.id], in: nil, in: .page)
     }
 }
 

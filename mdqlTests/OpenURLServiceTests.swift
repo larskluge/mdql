@@ -91,8 +91,11 @@ final class OpenURLServiceTests: XCTestCase {
         return result
     }
 
+    /// Checks the task `url` starts with, `- [ ] task`, whose marker is byte 3.
     private func toggle(_ url: URL, previewing document: URL) throws -> Bool {
-        try reply { OpenURLService().toggleCheckbox(at: url.path, index: 0, previewing: document.path, withReply: $0) }
+        try reply { done in
+            OpenURLService().toggleCheckbox(at: url.path, offset: 3, checked: true, previewing: document.path) { done($0 == .toggled) }
+        }
     }
 
     private func reply(_ call: (@escaping (Bool) -> Void) throws -> Void) throws -> Bool {

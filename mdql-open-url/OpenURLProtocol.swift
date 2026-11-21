@@ -7,5 +7,5 @@ import Foundation
 @objc protocol OpenURLProtocol {
     func open(_ url: URL, withReply reply: @escaping (Bool) -> Void)
     func readFile(at path: String, previewing documentPath: String, withReply reply: @escaping (String?, String?) -> Void)
-    func toggleCheckbox(at path: String, index: Int, previewing documentPath: String, withReply reply: @escaping (Bool) -> Void)
+    func toggleCheckbox(at path: String, offset: Int, checked: Bool, previewing documentPath: String, withReply reply: @escaping (CheckboxToggleOutcome) -> Void)
 }

@@ -172,18 +172,85 @@ final class RenderedPageTests: XCTestCase {
 
     func testCheckboxStillToggles() throws {
         let toggled = expectation(description: "toggleCheckbox reached Swift")
-        var toggledIndex: Int?
+        var toggledOffset: Int?
+        var toggledChecked: Bool?
         let page = try show("- [ ] task") { controller in
-            controller.toggleCheckbox = { index, _, completion in
-                toggledIndex = index
-                completion(true)
+            controller.toggleCheckbox = { offset, checked, completion in
+                toggledOffset = offset
+                toggledChecked = checked
+                completion(.toggled)
                 toggled.fulfill()
             }
         }.webView
 
         try evaluate("document.querySelector('input[type=checkbox]').click(); true", in: page)
         wait(for: [toggled], timeout: 10)
-        XCTAssertEqual(toggledIndex, 0)
+        XCTAssertEqual(toggledOffset, 3)
+        XCTAssertEqual(toggledChecked, true)
+    }
+
+    func testALinkToASectionOfAnotherFileOpensItThereAndBackReturns() throws {
+        let shown = try show("[Section](two.md#sec)")
+        let two = shown.file.deletingLastPathComponent().appendingPathComponent("two.md")
+        let filler = (1...200).map { "Line \($0)." }.joined(separator: "\n\n")
+        try Data("Top.\n\n\(filler)\n\n<h2 id=\"sec\">Section</h2>\n\nSection text.\n\n\(filler)".utf8).write(to: two)
+
+        let followed = expectation(description: "followed the link to two.md")
+        let wentBack = expectation(description: "went back to the first file")
+        shown.controller.fileURLDidChange = { url in
+            if url?.lastPathComponent == "two.md" { followed.fulfill() }
+            if url?.lastPathComponent == shown.file.lastPathComponent { wentBack.fulfill() }
+        }
+
+        try evaluate("document.querySelector('a').click(); true", in: shown.webView)
+        wait(for: [followed], timeout: 10)
+        try waitUntil("document.readyState === 'complete' && !!document.getElementById('sec')"
+                      + " && window.scrollY > 0"
+                      + " && Math.abs(document.getElementById('sec').getBoundingClientRect().top) < 2",
+                      in: shown.webView)
+        try evaluate("document.getElementById('mdql-back').click(); true", in: shown.webView)
+        wait(for: [wentBack], timeout: 10)
+    }
+
+    // MARK: - A click flips that task's marker, and nothing else
+
+    /// Each source holds the tasks `task0`, `task1`, … and decoys that look like a
+    /// task to a scan of the lines but render as none. Clicking task N, through the
+    /// viewer's own wiring, must flip the byte inside task N's brackets and no other.
+    func testClickingATaskFlipsExactlyThatTasksMarker() throws {
+        let sources: [(name: String, markdown: [UInt8])] = [
+            ("an indented code block", Array("Intro.\n\n    - [ ] decoy in indented code\n\n- [ ] task0\n- [ ] task1\n".utf8)),
+            ("a 1) list", Array("1) [ ] task0\n\n- [ ] task1\n".utf8)),
+            ("a raw <input type=checkbox>", Array("Raw: <input type=\"checkbox\"> inline.\n\n- [ ] task0\n- [ ] task1\n".utf8)),
+            ("an HTML comment", Array("<!--\n- [ ] decoy in a comment\n-->\n\n- [ ] task0\n- [ ] task1\n".utf8)),
+            ("a four-backtick fence holding three", Array("````\n```\n- [ ] decoy in a fence\n```\n````\n\n- [ ] task0\n- [ ] task1\n".utf8)),
+            ("a UTF-8 BOM", [0xEF, 0xBB, 0xBF] + Array("- [ ] task0\n- [ ] task1\n".utf8)),
+            ("front matter", Array("---\ntitle: Plan\n---\n- [ ] task0\n- [ ] task1\n".utf8)),
+            ("CRLF line endings", Array("Intro.\r\n\r\n- [ ] task0\r\n- [ ] task1\r\n".utf8)),
+            ("a nested list", Array("- parent\n  - [ ] task0\n    - [ ] task1\n".utf8)),
+        ]
+        for source in sources {
+            for task in 0..<2 {
+                let shown = try showInViewer(Data(source.markdown))
+                let original = try Data(contentsOf: shown.file)
+                let marker = try XCTUnwrap(markerOffset(of: "task\(task)", in: original), "\(source.name): no task\(task)")
+                var expected = original
+                expected[marker] = UInt8(ascii: "x")
+
+                // The innermost item holding the label is the task's own: a parent
+                // item's text includes its children's.
+                try evaluate("""
+                    var items = Array.from(document.querySelectorAll('.markdown-body li'))
+                        .filter(function (li) { return li.textContent.includes('task\(task)'); });
+                    items[items.length - 1].querySelector('input[type=checkbox]').click();
+                    true
+                    """, in: shown.webView)
+                let written = waitForChange(of: shown.file, from: original)
+                XCTAssertEqual(written.map { String(decoding: $0, as: UTF8.self) },
+                               String(decoding: expected, as: UTF8.self),
+                               "\(source.name): clicking task\(task) must flip its marker and nothing else")
+            }
+        }
     }
 
     func testExternalLinkStillOpens() throws {
@@ -216,18 +283,15 @@ final class RenderedPageTests: XCTestCase {
     private struct Shown {
         let controller: MarkdownWebController
         let file: URL
+        /// Whatever hosts `controller` and must outlive the test, if not the test itself.
+        var host: AnyObject? = nil
         var webView: WKWebView { controller.webView }
     }
 
     /// Writes `markdown` to a file of its own, loads it the way both hosts do,
     /// and waits until the page has finished loading.
     private func show(_ markdown: String, configure: (MarkdownWebController) -> Void = { _ in }) throws -> Shown {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        let file = dir.appendingPathComponent("page.md")
-        try Data(markdown.utf8).write(to: file)
-
+        let file = try scratchFile(Data(markdown.utf8))
         let controller = MarkdownWebController()
         addTeardownBlock { controller.teardown() }
         controller.interactive = true
@@ -236,9 +300,53 @@ final class RenderedPageTests: XCTestCase {
         }
         configure(controller)
         try controller.loadMarkdownFile(at: file)
-        try waitUntil("!!document.querySelector('.markdown-body') && document.readyState === 'complete'",
-                      in: controller.webView)
+        try waitUntilLoaded(controller.webView)
         return Shown(controller: controller, file: file)
+    }
+
+    /// Writes `contents` to a file of its own and opens it as the viewer does: read
+    /// as `MarkdownDocument` reads it, shown by a `DocumentWindowController`, whose
+    /// checkbox toggles write to the file on disk.
+    private func showInViewer(_ contents: Data) throws -> Shown {
+        let file = try scratchFile(contents)
+        let viewer = DocumentWindowController()
+        addTeardownBlock { viewer.controller.teardown() }
+        viewer.load(try String(contentsOf: file, encoding: .utf8), readFrom: file)
+        try waitUntilLoaded(viewer.controller.webView)
+        return Shown(controller: viewer.controller, file: file, host: viewer)
+    }
+
+    private func scratchFile(_ contents: Data) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("page.md")
+        try contents.write(to: file)
+        return file
+    }
+
+    private func waitUntilLoaded(_ webView: WKWebView) throws {
+        try waitUntil("!!document.querySelector('.markdown-body') && document.readyState === 'complete'", in: webView)
+    }
+
+    /// The offset in `data` of the marker byte inside `[ ] <label>`'s brackets.
+    private func markerOffset(of label: String, in data: Data) -> Int? {
+        let needle = Array("[ ] \(label)".utf8)
+        let bytes = Array(data)
+        guard bytes.count >= needle.count else { return nil }
+        return (0...(bytes.count - needle.count)).first { Array(bytes[$0..<($0 + needle.count)]) == needle }.map { $0 + 1 }
+    }
+
+    /// The contents of `file` once they differ from `original`, or nil if they do
+    /// not within `timeout`. Runs the main run loop meanwhile, where the page's
+    /// message and the write's completion arrive.
+    private func waitForChange(of file: URL, from original: Data, timeout: TimeInterval = 5) -> Data? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let contents = try? Data(contentsOf: file), contents != original { return contents }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return nil
     }
 
     /// The text a reader sees: `innerText` leaves out whatever is not rendered.

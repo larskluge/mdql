@@ -29,12 +29,12 @@ class OpenURLService: NSObject, OpenURLProtocol {
     /// Writes only `path`, the file the preview shows, and only when the
     /// preview may read it: never a file outside the previewed document's
     /// folder, nor one that is not Markdown.
-    func toggleCheckbox(at path: String, index: Int, previewing documentPath: String, withReply reply: @escaping (Bool) -> Void) {
+    func toggleCheckbox(at path: String, offset: Int, checked: Bool, previewing documentPath: String, withReply reply: @escaping (CheckboxToggleOutcome) -> Void) {
         guard let file = permittedFile(path, previewing: documentPath, to: "write") else {
-            reply(false)
+            reply(.failed)
             return
         }
-        reply(CheckboxToggle.toggle(fileAt: file, index: index))
+        reply(CheckboxToggle.toggle(fileAt: file, offset: offset, checked: checked))
     }
 
     private func permittedFile(_ path: String, previewing documentPath: String, to action: String) -> URL? {

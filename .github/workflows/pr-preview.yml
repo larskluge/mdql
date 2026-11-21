@@ -36,7 +36,7 @@ jobs:
       - name: Generate preview screenshot
         run: |
           BUILT=$(xcodebuild -project mdql.xcodeproj -scheme mdql-screenshot -configuration Release \
-            -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR' | awk '{print $NF}')
+            -showBuildSettings 2>/dev/null | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p')
           mkdir -p assets/screenshots
           "$BUILT/mdql-screenshot" mdqlTests/Fixtures/front-matter.md assets/screenshots/pr-preview.png 1200 900
 

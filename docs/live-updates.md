@@ -41,7 +41,7 @@ func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Err
 
 WKWebView spawns out-of-process XPC subprocesses (WebContent, GPU, Networking) that the sandbox blocks by default. The fix is adding the `com.apple.security.network.client` entitlement to the extension — WKWebView requires this even for local HTML because it communicates with its subprocesses via XPC. This was a known WebKit bug on macOS Big Sur (fixed in macOS 12 via WebKit Changeset 271895).
 
-Link clicks are intercepted in JavaScript and dispatched to Swift via `WKScriptMessageHandler`, where they are routed to one of three actions: `openURL` (http/https opened in the default browser via XPC), `openMarkdown` (relative `.md` link navigated in-place), and `goBack` (pops the history stack).
+Link clicks are intercepted in JavaScript and dispatched to Swift via `WKScriptMessageHandler`, where they are routed to one of three actions: `openURL` (http/https opened in the default browser via XPC), `openMarkdown` (relative `.md` link navigated in-place, scrolled to its `#section` if it has one), and `goBack` (pops the history stack).
 
 ### 3. FileWatcher (DispatchSource with `O_EVTONLY`)
 
@@ -50,7 +50,7 @@ A `DispatchSource.makeFileSystemObjectSource` monitors the file for `.write`, `.
 Key details:
 - **Atomic save recovery** — Editors like vim and `sed -i` delete the original file and rename a temp file in its place. The watcher detects `.rename`/`.delete` events, closes the old file descriptor, waits 50ms for the new file to settle, then re-opens at the same path.
 - **100ms coalescing** — Rapid writes (e.g., `echo` in a loop) are batched via a `DispatchWorkItem` that resets on each event. Only the final state triggers a callback.
-- **Main thread callback** — The callback dispatches to the main thread so it's safe to update the WebView.
+- **Main queue throughout** — The source delivers its events on the main queue, where `start`, `stop` and the callback also run, so the watcher's state is touched from one thread and the callback can update the WebView.
 
 ### 4. innerHTML injection (no flicker, no scroll loss)
 

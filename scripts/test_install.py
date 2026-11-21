@@ -87,6 +87,11 @@ case "$1" in
 esac
 """
 
+# Re-signs nothing, unless the test asked it to fail.
+FAKE_CODESIGN = """#!/bin/sh
+[ ! -e "$FAKE/codesign-fails" ] || { echo "codesign: fake cannot sign $*" >&2; exit 1; }
+"""
+
 # Every wait in the script, shortened: a quit that is ignored costs half a second here.
 FAKE_SLEEP = "#!/bin/sh\nexec /bin/sleep 0.01\n"
 DOES_NOTHING = "#!/bin/sh\nexit 0\n"
@@ -140,7 +145,7 @@ class InstallTests(unittest.TestCase):
         stubs = {
             "pgrep": FAKE_PGREP, "lsof": FAKE_LSOF, "osascript": FAKE_OSASCRIPT,
             "open": FAKE_OPEN, "lsregister": FAKE_LSREGISTER, "sleep": FAKE_SLEEP,
-            "codesign": DOES_NOTHING, "qlmanage": DOES_NOTHING,
+            "codesign": FAKE_CODESIGN, "qlmanage": DOES_NOTHING,
         }
         for name, body in stubs.items():
             stub = cls.bin / name
@@ -238,6 +243,25 @@ class InstallTests(unittest.TestCase):
         executable = self.applications / "mdql.app" / "Contents" / "MacOS" / "mdql"
         self.assertEqual(executable.read_text(), "the new build\n")
         self.assertEqual(self.lines("registered"), [self.app])
+
+    def test_a_missing_build_leaves_the_installed_app_in_place(self):
+        installed = self.applications / "mdql.app" / "Contents" / "MacOS" / "mdql"
+        installed.parent.mkdir(parents=True)
+        installed.write_text("the installed build\n")
+        shutil.rmtree(self.built / "mdql.app")
+        result = self.install()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(installed.read_text(), "the installed build\n")
+        self.assertIn(f"no mdql.app in {self.built}", result.stderr)
+        self.assertEqual(self.lines("registered"), [])
+
+    def test_a_failed_re_sign_fails_the_install_with_codesigns_error(self):
+        (self.fake / "codesign-fails").touch()
+        result = self.install()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn(f"codesign: fake cannot sign --force --sign - {self.app}", result.stderr)
+        self.assertIn(f"could not re-sign {self.app}", result.stderr)
+        self.assertEqual(self.lines("registered"), [])
 
     def test_with_no_viewer_running_the_app_is_launched_once_and_quit_again(self):
         self.installed()

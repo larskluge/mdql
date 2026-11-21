@@ -196,6 +196,30 @@ final class FileWatcherTests: XCTestCase {
         watcher.stop()
     }
 
+    func testStoppingAndStartingWhileTheFileChanges() {
+        // Events arrive while the owner stops and restarts the watcher, as
+        // following links does. Run under Thread Sanitizer, this is the check that
+        // the watcher's state is only touched from one thread.
+        let url = tempFile()
+        let watcher = FileWatcher(url: url) {}
+        let written = expectation(description: "writes finished")
+        DispatchQueue.global().async {
+            for i in 0..<200 {
+                try? "# Write \(i)".write(to: url, atomically: i % 2 == 0, encoding: .utf8)
+                usleep(1000)
+            }
+            written.fulfill()
+        }
+        let deadline = Date().addingTimeInterval(0.5)
+        while Date() < deadline {
+            watcher.start()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.003))
+            watcher.stop()
+        }
+        wait(for: [written], timeout: 10)
+        XCTAssertFalse(watcher.isWatching)
+    }
+
     func testCallbackOnMainThread() {
         let url = tempFile()
         let expectation = self.expectation(description: "callback on main")

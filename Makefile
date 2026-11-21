@@ -9,7 +9,7 @@ install:
 		-destination 'platform=macOS' build 2>&1 | tail -3
 	@echo ""
 	@BUILT="$$(xcodebuild -project mdql.xcodeproj -scheme mdql -configuration Release \
-		-showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR' | awk '{print $$NF}')" && \
+		-showBuildSettings 2>/dev/null | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p')" && \
 		scripts/install.sh "$$BUILT"
 	@echo ""
 	@# Verify pluginkit registration

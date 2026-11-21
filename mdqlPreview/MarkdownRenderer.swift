@@ -16,36 +16,91 @@ public struct MarkdownRenderer {
     }
 
     public static func render(markdown: String, title: String = "", showBackButton: Bool = false, interactive: Bool = false, appChrome: Bool = false) -> String {
-        let (frontMatter, body) = parseFrontMatter(markdown)
-        let document = Document(parsing: body, options: [.parseBlockDirectives])
-        let html = postProcessCheckboxes(HTMLFormatter.format(escapingAttributeValues(document)), interactive: interactive)
-        let frontMatterHTML = renderFrontMatter(frontMatter)
-        return wrapInHTMLDocument(body: frontMatterHTML + html, title: title, showBackButton: showBackButton, interactive: interactive, appChrome: appChrome)
+        wrapInHTMLDocument(body: renderBody(markdown: markdown, interactive: interactive), title: title, showBackButton: showBackButton, interactive: interactive, appChrome: appChrome)
     }
 
     public static func renderBody(markdown: String, interactive: Bool = false) -> String {
         let (frontMatter, body) = parseFrontMatter(markdown)
         let document = Document(parsing: body, options: [.parseBlockDirectives])
-        let frontMatterHTML = renderFrontMatter(frontMatter)
-        return frontMatterHTML + postProcessCheckboxes(HTMLFormatter.format(escapingAttributeValues(document)), interactive: interactive)
+        var checkboxes = TaskCheckboxes(markdown: markdown, body: body, interactive: interactive)
+        let html = HTMLFormatter.format(escapingAttributeValues(checkboxes.visit(document) ?? document))
+        return renderFrontMatter(frontMatter) + html
     }
 
-    // MARK: - Interactive Checkboxes
-    // When `interactive` is true, strip `disabled` from task-list
-    // checkboxes and assign each one a sequential `data-cb-index` attribute so
-    // JS can identify them and Swift can map clicks back to the source file.
+    // MARK: - Task Checkboxes
+    // Which list items are tasks, and where each one's marker sits in the file,
+    // both come from the parse that renders them. A scan of the source lines or
+    // of the HTML disagrees with it (indented code, `1)` lists, comments, raw
+    // `<input>`s, a fence inside a longer fence), and a click then flipped some
+    // other task's byte, or one inside code.
 
-    static func postProcessCheckboxes(_ html: String, interactive: Bool) -> String {
-        guard interactive else { return html }
-        var index = 0
-        return replaceRegex(in: html, pattern: #"<input([^>]*?type="checkbox"[^>]*?)\s*/?>"#) { groups in
-            var attrs = groups[1]
-            attrs = attrs.replacingOccurrences(of: #" disabled="""#, with: "")
-            attrs = attrs.replacingOccurrences(of: " disabled=''", with: "")
-            attrs = attrs.replacingOccurrences(of: " disabled", with: "")
-            let result = "<input\(attrs) data-cb-index=\"\(index)\">"
-            index += 1
-            return result
+    /// Draws each task item's checkbox from its source. In interactive mode the
+    /// checkbox carries `data-cb-offset`, the UTF-8 offset in the markdown text
+    /// of the byte between its brackets, which `CheckboxToggle` flips; otherwise
+    /// it is disabled. Either way it shows that byte's state, so the state a
+    /// click asks for is always the other one. An item whose marker is not where
+    /// the parse puts it keeps the formatter's disabled checkbox.
+    private struct TaskCheckboxes: MarkupRewriter {
+        /// The whole markdown text, front matter included, which offsets count in.
+        let source: [UInt8]
+        /// The offset in `source` at which each line of the parsed body starts.
+        let lineStarts: [Int]
+        let interactive: Bool
+
+        init(markdown: String, body: String, interactive: Bool) {
+            source = Array(markdown.utf8)
+            let bodyStart = source.count - body.utf8.count // the body is what follows the front matter
+            var starts = [bodyStart]
+            for i in bodyStart..<source.count {
+                // A line ends at \n, \r\n or a lone \r, as cmark reads it.
+                if source[i] == UInt8(ascii: "\n") || (source[i] == UInt8(ascii: "\r") && (i + 1 == source.count || source[i + 1] != UInt8(ascii: "\n"))) {
+                    starts.append(i + 1)
+                }
+            }
+            lineStarts = starts
+            self.interactive = interactive
+        }
+
+        mutating func visitListItem(_ listItem: ListItem) -> Markup? {
+            let visited = defaultVisit(listItem)
+            guard listItem.checkbox != nil,
+                  let start = listItem.range?.lowerBound,
+                  let marker = markerOffset(line: start.line, column: start.column),
+                  let item = visited as? ListItem else { return visited }
+            let checked = source[marker] != UInt8(ascii: " ")
+            let input = "<input type=\"checkbox\""
+                + (interactive ? "" : " disabled=\"\"")
+                + (checked ? " checked=\"\"" : "")
+                + (interactive ? " data-cb-offset=\"\(marker)\"" : "")
+                + " /> "
+            return ListItem(checkbox: nil, [HTMLBlock(input)] + Array(item.blockChildren))
+        }
+
+        /// The offset of the byte between a task item's brackets, given the line
+        /// and byte column its list marker starts at: past `-`, `+` or `*`, or
+        /// digits and their delimiter, then the spaces or tabs after it, as
+        /// cmark-gfm's tasklist scanner reads it. Nil unless `[ ]`, `[x]` or `[X]`
+        /// is there.
+        private func markerOffset(line: Int, column: Int) -> Int? {
+            guard line >= 1, line <= lineStarts.count, column >= 1 else { return nil }
+            func byte(_ i: Int) -> UInt8? { i < source.count ? source[i] : nil }
+            func isDigit(_ b: UInt8?) -> Bool { b.map { (0x30...0x39).contains($0) } ?? false }
+            var i = lineStarts[line - 1] + column - 1
+            if let b = byte(i), [UInt8(ascii: "-"), UInt8(ascii: "+"), UInt8(ascii: "*")].contains(b) {
+                i += 1
+            } else if isDigit(byte(i)) {
+                while isDigit(byte(i)) { i += 1 }
+                i += 1 // `.` or `)`
+            } else {
+                return nil
+            }
+            let afterBullet = i
+            while byte(i) == UInt8(ascii: " ") || byte(i) == UInt8(ascii: "\t") { i += 1 }
+            guard i > afterBullet,
+                  byte(i) == UInt8(ascii: "["), byte(i + 2) == UInt8(ascii: "]"),
+                  let marker = byte(i + 1), [UInt8(ascii: " "), UInt8(ascii: "x"), UInt8(ascii: "X")].contains(marker)
+            else { return nil }
+            return i + 1
         }
     }
 
@@ -67,9 +122,9 @@ public struct MarkdownRenderer {
     /// enough — and this preview runs JS with a bridge that opens URLs and
     /// writes to the file on disk. Escaping on the tree removes the hole
     /// instead of papering over it.
-    static func escapingAttributeValues(_ document: Document) -> Markup {
+    static func escapingAttributeValues(_ markup: Markup) -> Markup {
         var escaper = AttributeValueEscaper()
-        return escaper.visit(document) ?? document
+        return escaper.visit(markup) ?? markup
     }
 
     private struct AttributeValueEscaper: MarkupRewriter {
@@ -163,37 +218,6 @@ public struct MarkdownRenderer {
          .replacingOccurrences(of: "\"", with: "&quot;")
     }
 
-    private static func replaceRegex(
-        in input: String,
-        pattern: String,
-        with transform: ([String]) -> String
-    ) -> String {
-        // Patterns here are hard-coded literals; a compile failure is a programmer error,
-        // not a runtime condition to recover from silently.
-        let regex = try! NSRegularExpression(pattern: pattern, options: [])
-        let nsInput = input as NSString
-        let matches = regex.matches(in: input, options: [], range: NSRange(location: 0, length: nsInput.length))
-        var out = ""
-        var cursor = 0
-        for match in matches {
-            let range = match.range
-            if range.location > cursor {
-                out += nsInput.substring(with: NSRange(location: cursor, length: range.location - cursor))
-            }
-            var groups: [String] = []
-            for i in 0..<match.numberOfRanges {
-                let r = match.range(at: i)
-                groups.append(r.location == NSNotFound ? "" : nsInput.substring(with: r))
-            }
-            out += transform(groups)
-            cursor = range.location + range.length
-        }
-        if cursor < nsInput.length {
-            out += nsInput.substring(with: NSRange(location: cursor, length: nsInput.length - cursor))
-        }
-        return out
-    }
-
     // MARK: - Front Matter
 
     /// Parses YAML front matter from markdown. Returns (key-value pairs, remaining body).
@@ -283,24 +307,22 @@ public struct MarkdownRenderer {
         """ : ""
         let interactiveCheckboxJS = interactive ? """
 
-            // Optimistic toggle: own the visual flip in JS on click, BEFORE
-            // anything else. preventDefault stops the native toggle so the
-            // visible state changes exactly when we set it — no waiting on
-            // the browser's default-action + change-event chain.
+            // By the time a click reaches this listener the box has already
+            // flipped, so `checked` is the state asked for. Swift writes it to
+            // the marker at `data-cb-offset`, or reverts the box if it cannot.
             document.addEventListener('click', function(e) {
                 var el = e.target;
-                if (el && el.matches && el.matches('input[type="checkbox"][data-cb-index]')) {
-                    var idx = parseInt(el.getAttribute('data-cb-index'), 10);
+                if (el && el.matches && el.matches('input[type="checkbox"][data-cb-offset]')) {
                     window.webkit.messageHandlers.mdql.postMessage({
                         action: "toggleCheckbox",
-                        index: idx,
+                        offset: parseInt(el.getAttribute('data-cb-offset'), 10),
                         checked: el.checked
                     });
                 }
             });
 
-            window.__mdqlRevertCheckbox = function(index) {
-                var el = document.querySelector('input[type="checkbox"][data-cb-index="' + index + '"]');
+            window.__mdqlRevertCheckbox = function(offset) {
+                var el = document.querySelector('input[type="checkbox"][data-cb-offset="' + offset + '"]');
                 if (el) el.checked = !el.checked;
             };
         """ : ""
@@ -422,8 +444,7 @@ public struct MarkdownRenderer {
                     window.__mdqlShowToast(el.href);
                     window.webkit.messageHandlers.mdql.postMessage({
                         action: "openURL",
-                        url: el.href,
-                        background: e.metaKey
+                        url: el.href
                     });
                 }
             });

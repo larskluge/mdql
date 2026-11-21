@@ -64,16 +64,33 @@ final class MarkdownRendererTests: XCTestCase {
 
     // MARK: - Interactive checkboxes (host app mode)
 
-    func testInteractiveModeAddsDataIndexToCheckboxes() {
+    func testInteractiveCheckboxesCarryTheOffsetOfTheirMarker() {
         let md = """
         - [ ] one
         - [x] two
         """
         let html = MarkdownRenderer.render(markdown: md, interactive: true)
-        XCTAssertTrue(html.contains("data-cb-index=\"0\""),
-                      "First checkbox should have data-cb-index=\"0\"")
-        XCTAssertTrue(html.contains("data-cb-index=\"1\""),
-                      "Second checkbox should have data-cb-index=\"1\"")
+        XCTAssertTrue(html.contains(#"<input type="checkbox" data-cb-offset="3" />"#), html)
+        XCTAssertTrue(html.contains(#"<input type="checkbox" checked="" data-cb-offset="13" />"#), html)
+    }
+
+    func testCheckboxOffsetsCountTheFrontMatter() {
+        let md = "---\ntitle: Plan\n---\n- [ ] one\n"
+        let html = MarkdownRenderer.renderBody(markdown: md, interactive: true)
+        XCTAssertTrue(html.contains(#"data-cb-offset="23""#), html)
+    }
+
+    func testACheckboxShowsTheStateOfItsOwnMarker() {
+        // cmark-gfm checks an item when `[x]` appears anywhere on its line; the
+        // marker is what a click flips, so it is what the checkbox shows.
+        let html = MarkdownRenderer.renderBody(markdown: "- [ ] compare with [x]\n", interactive: true)
+        XCTAssertTrue(html.contains(#"<input type="checkbox" data-cb-offset="3" />"#), html)
+    }
+
+    func testOnlyRealTasksGetACheckbox() {
+        let md = "    - [ ] indented code\n\n<!--\n- [ ] comment\n-->\n\n````\n```\n- [ ] fence\n```\n````\n"
+        let html = MarkdownRenderer.renderBody(markdown: md, interactive: true)
+        XCTAssertFalse(html.contains("<input"), html)
     }
 
     func testInteractiveModeStripsDisabledAttribute() {
@@ -86,10 +103,8 @@ final class MarkdownRendererTests: XCTestCase {
     func testNonInteractiveModeIsUnchanged() {
         let md = "- [ ] task\n"
         let html = MarkdownRenderer.render(markdown: md) // default interactive=false
-        XCTAssertFalse(html.contains("data-cb-index=\""),
-                       "Non-interactive mode should not add data-cb-index attribute")
-        XCTAssertTrue(html.contains("disabled"),
-                      "Non-interactive mode keeps disabled attribute")
+        XCTAssertTrue(html.contains(#"<input type="checkbox" disabled="" /> "#),
+                      "Non-interactive mode keeps the formatter's disabled checkbox, without an offset")
     }
 
     func testInteractiveModeIncludesToggleClickHandler() {
@@ -129,13 +144,13 @@ final class MarkdownRendererTests: XCTestCase {
                        "Bare body must not carry the titlebar top padding")
     }
 
-    func testRenderBodyAddsDataIndexInInteractiveMode() {
-        // renderBody is used by FileWatcher for innerHTML updates — must
-        // assign the same indices so click handlers re-bind correctly.
+    func testRenderBodyAddsOffsetsInInteractiveMode() {
+        // renderBody is used by FileWatcher for innerHTML updates — its
+        // checkboxes must carry offsets too, or a reloaded page cannot toggle.
         let md = "- [ ] one\n- [ ] two\n"
         let body = MarkdownRenderer.renderBody(markdown: md, interactive: true)
-        XCTAssertTrue(body.contains("data-cb-index=\"0\""))
-        XCTAssertTrue(body.contains("data-cb-index=\"1\""))
+        XCTAssertTrue(body.contains(#"data-cb-offset="3""#))
+        XCTAssertTrue(body.contains(#"data-cb-offset="13""#))
         XCTAssertFalse(body.contains("disabled"))
     }
 

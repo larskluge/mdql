@@ -56,28 +56,10 @@ final class PreviewControllerTests: XCTestCase {
             expectation.fulfill()
         }
 
-        controller.handleOpenURL("https://example.com", background: false)
+        controller.handleOpenURL("https://example.com")
 
         waitForExpectations(timeout: 1)
         XCTAssertEqual(receivedURL?.absoluteString, "https://example.com")
-    }
-
-    func testOpenURLWithBackgroundFlag() {
-        let controller = PreviewController()
-        controller.loadView()
-
-        let expectation = expectation(description: "openURL callback invoked")
-        var receivedURL: URL?
-
-        controller.openURL = { url in
-            receivedURL = url
-            expectation.fulfill()
-        }
-
-        controller.handleOpenURL("https://example.com/bg", background: true)
-
-        waitForExpectations(timeout: 1)
-        XCTAssertEqual(receivedURL?.absoluteString, "https://example.com/bg")
     }
 
     func testOpenURLIgnoresEmptyString() {
@@ -89,7 +71,7 @@ final class PreviewControllerTests: XCTestCase {
             callbackInvoked = true
         }
 
-        controller.handleOpenURL("", background: false)
+        controller.handleOpenURL("")
 
         XCTAssertFalse(callbackInvoked, "Should not invoke callback for empty URL")
     }
@@ -103,8 +85,8 @@ final class PreviewControllerTests: XCTestCase {
             receivedURLs.append(url)
         }
 
-        controller.handleOpenURL("https://example.com", background: false)
-        controller.handleOpenURL("http://example.com", background: false)
+        controller.handleOpenURL("https://example.com")
+        controller.handleOpenURL("http://example.com")
 
         XCTAssertEqual(receivedURLs.count, 2, "Should handle both http and https URLs")
         XCTAssertEqual(receivedURLs[0].scheme, "https")
@@ -117,9 +99,9 @@ final class PreviewControllerTests: XCTestCase {
         controller.openURL = { opened.append($0.absoluteString) }
 
         for string in refusedURLs {
-            controller.handleOpenURL(string, background: false)
+            controller.handleOpenURL(string)
         }
-        controller.handleOpenURL("mailto:someone@example.com", background: false)
+        controller.handleOpenURL("mailto:someone@example.com")
 
         XCTAssertEqual(opened, ["mailto:someone@example.com"], "Only http, https and mailto may be opened")
     }
@@ -168,21 +150,38 @@ final class PreviewControllerTests: XCTestCase {
 
     // MARK: - Checkbox toggle dispatch
 
-    func testHandleToggleCheckboxInvokesClosureWithIndexAndState() {
+    func testHandleToggleCheckboxInvokesClosureWithOffsetAndState() {
         let controller = MarkdownWebController()
-        var receivedIndex: Int?
+        var receivedOffset: Int?
         var receivedChecked: Bool?
         let exp = expectation(description: "toggleCheckbox invoked")
-        controller.toggleCheckbox = { index, checked, completion in
-            receivedIndex = index
+        controller.toggleCheckbox = { offset, checked, completion in
+            receivedOffset = offset
             receivedChecked = checked
-            completion(true)
+            completion(.toggled)
             exp.fulfill()
         }
-        controller.handleToggleCheckbox(index: 2, checked: true)
+        controller.handleToggleCheckbox(offset: 23, checked: true)
         wait(for: [exp], timeout: 1)
-        XCTAssertEqual(receivedIndex, 2)
+        XCTAssertEqual(receivedOffset, 23)
         XCTAssertEqual(receivedChecked, true)
+    }
+
+    func testAStaleToggleRendersTheFileAgain() throws {
+        // The file changed since the page was drawn: rather than write, show it.
+        let controller = MarkdownWebController()
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mdql-stale-\(UUID().uuidString).md")
+        try "- [x] task\n".write(to: tmp, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try controller.loadMarkdownFile(at: tmp)
+
+        var read: [URL] = []
+        controller.readFile = { url, _ in read.append(url) }
+        controller.toggleCheckbox = { _, _, completion in completion(.stale) }
+        controller.handleToggleCheckbox(offset: 3, checked: true)
+
+        XCTAssertEqual(read, [tmp], "A stale toggle must re-read the file to render it again")
     }
 
     func testInteractiveFlagPropagatesToRenderedHTML() throws {
@@ -197,7 +196,7 @@ final class PreviewControllerTests: XCTestCase {
         // we can re-render with the same flag and check the output the
         // controller would have produced.
         let html = MarkdownRenderer.render(markdown: "- [ ] task\n", interactive: true)
-        XCTAssertTrue(html.contains("data-cb-index=\"0\""))
+        XCTAssertTrue(html.contains(#"data-cb-offset="3""#))
     }
 
     func testPreviewDoesNotUseHostAppChrome() {
@@ -307,6 +306,30 @@ final class PreviewControllerTests: XCTestCase {
 
         XCTAssertEqual(observed, ["one.md", "two.md"],
                        "Every change of rendered file must be reported to the host")
+    }
+
+    func testALinkToASectionOfAnotherFileReadsThatFile() throws {
+        // The fragment is not part of the file name: `two.md#sec` once had the
+        // extension `md#sec`, and the link was dropped.
+        let controller = MarkdownWebController()
+        var read: [String] = []
+        controller.readFile = { url, completion in
+            read.append(url.lastPathComponent)
+            completion(try? String(contentsOf: url, encoding: .utf8))
+        }
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let file1 = tmpDir.appendingPathComponent("one.md")
+        try "# One".write(to: file1, atomically: true, encoding: .utf8)
+        try "# Two".write(to: tmpDir.appendingPathComponent("two words.md"), atomically: true, encoding: .utf8)
+
+        try controller.loadMarkdownFile(at: file1)
+        controller.handleOpenMarkdown("two%20words.md#sec")
+
+        XCTAssertEqual(read, ["two words.md"])
+        XCTAssertEqual(controller.fileURL?.lastPathComponent, "two words.md")
     }
 
     // MARK: - Version display

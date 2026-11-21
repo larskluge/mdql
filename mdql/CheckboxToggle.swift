@@ -1,43 +1,58 @@
 import Foundation
 
-/// Flips a single GFM task-list checkbox marker in a file on disk.
+/// What became of a request to set a task-list checkbox.
+@objc enum CheckboxToggleOutcome: Int {
+    /// The marker now holds the state asked for.
+    case toggled
+    /// The file no longer holds the marker the page showed, so nothing was
+    /// written: it changed since it was rendered, and must be rendered again.
+    case stale
+    /// The file could not be opened, read or written.
+    case failed
+}
+
+/// Sets a single GFM task-list checkbox marker in a file on disk.
 ///
-/// The change is a single-byte write: the character between `[` and `]` is
-/// replaced with its opposite (`' '` ⇄ `'x'`). `[X]` is treated as checked
-/// and unchecks to `[ ]`. Nothing else in the file is touched — same inode,
-/// no full rewrite, no whitespace normalization.
+/// The change is a single-byte write: the byte between `[` and `]` becomes `x`
+/// or a space. Nothing else in the file is touched — same inode, no full
+/// rewrite, no whitespace normalization, a byte-order mark kept.
 enum CheckboxToggle {
 
-    /// Toggles the `index`-th checkbox in the file. Returns `true` on success.
-    /// Returns `false` if the file can't be read, the index is out of range,
-    /// or the write fails.
-    @discardableResult
-    static func toggle(fileAt url: URL, index: Int) -> Bool {
-        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
-            return false
-        }
-        let offsets = MarkdownCheckboxScanner.scan(contents)
-        guard index >= 0, index < offsets.count else { return false }
-        let byteOffset = offsets[index]
+    private static let byteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]
 
-        let bytes = Array(contents.utf8)
-        guard byteOffset < bytes.count else { return false }
-        let current = bytes[byteOffset]
-        let newByte: UInt8
-        switch current {
-        case 0x20: newByte = 0x78 // space → x
-        case 0x78, 0x58: newByte = 0x20 // x|X → space
-        default: return false
-        }
+    /// Sets the marker at `offset` to `checked`. `offset` counts UTF-8 bytes in
+    /// the file's text as Foundation decodes it, which is what the renderer's
+    /// `data-cb-offset` counts in: a leading byte-order mark, which decoding
+    /// drops, is not counted.
+    ///
+    /// The file is read and written through one descriptor. Nothing is written
+    /// unless that byte sits between `[` and `]` and holds the opposite of
+    /// `checked`; anything else means the file is not what the page showed.
+    static func toggle(fileAt url: URL, offset: Int, checked: Bool) -> CheckboxToggleOutcome {
+        let fd = open(url.path, O_RDWR | O_CLOEXEC)
+        guard fd >= 0 else { return .failed }
+        defer { close(fd) }
 
-        guard let handle = try? FileHandle(forUpdating: url) else { return false }
-        defer { try? handle.close() }
+        let bytes: [UInt8]
         do {
-            try handle.seek(toOffset: UInt64(byteOffset))
-            try handle.write(contentsOf: Data([newByte]))
-            return true
+            bytes = Array(try FileHandle(fileDescriptor: fd, closeOnDealloc: false).readToEnd() ?? Data())
         } catch {
-            return false
+            return .failed
         }
+        let position = offset + (bytes.starts(with: byteOrderMark) ? byteOrderMark.count : 0)
+        guard offset >= 0, position >= 1, position + 1 < bytes.count,
+              bytes[position - 1] == UInt8(ascii: "["), bytes[position + 1] == UInt8(ascii: "]")
+        else { return .stale }
+
+        let shown: Bool
+        switch bytes[position] {
+        case UInt8(ascii: " "): shown = false
+        case UInt8(ascii: "x"), UInt8(ascii: "X"): shown = true
+        default: return .stale
+        }
+        guard shown != checked else { return .stale }
+
+        var marker = checked ? UInt8(ascii: "x") : UInt8(ascii: " ")
+        return pwrite(fd, &marker, 1, off_t(position)) == 1 ? .toggled : .failed
     }
 }

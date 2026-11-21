@@ -58,12 +58,12 @@ class PreviewController: NSViewController, QLPreviewingController {
             }
         }
         controller.interactive = true
-        controller.toggleCheckbox = { [weak self] index, _, completion in
+        controller.toggleCheckbox = { [weak self] offset, checked, completion in
             guard let url = self?.controller.fileURL,
                   let document = self?.controller.documentURL,
-                  let proxy = self?.xpcProxy else { completion(false); return }
-            proxy.toggleCheckbox(at: url.path, index: index, previewing: document.path) { success in
-                DispatchQueue.main.async { completion(success) }
+                  let proxy = self?.xpcProxy else { completion(.failed); return }
+            proxy.toggleCheckbox(at: url.path, offset: offset, checked: checked, previewing: document.path) { outcome in
+                DispatchQueue.main.async { completion(outcome) }
             }
         }
     }
@@ -84,8 +84,8 @@ class PreviewController: NSViewController, QLPreviewingController {
     }
 
     /// Handles an openURL action. Exposed for testing.
-    func handleOpenURL(_ urlString: String, background: Bool) {
-        controller.handleOpenURL(urlString, background: background)
+    func handleOpenURL(_ urlString: String) {
+        controller.handleOpenURL(urlString)
     }
 
     /// Handles an openMarkdown action. Exposed for testing.

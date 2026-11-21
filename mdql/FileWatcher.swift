@@ -1,12 +1,16 @@
 import Foundation
 
-class FileWatcher {
+/// Watches one file and calls back after it changes, once per burst of writes,
+/// recovering when an editor replaces the file by renaming another over it.
+///
+/// Main-queue only: `start`, `stop`, the source's events and the callback all
+/// run there, so the source, the pending callback and `isWatching` are only
+/// ever touched from one thread, and no callback comes after `stop` returns.
+final class FileWatcher {
     private let url: URL
     private let callback: () -> Void
-    private var fileDescriptor: Int32 = -1
     private var source: DispatchSourceFileSystemObject?
     private var coalesceWorkItem: DispatchWorkItem?
-    private let queue = DispatchQueue(label: "com.mdql.filewatcher", qos: .utility)
     private(set) var isWatching = false
 
     init(url: URL, callback: @escaping () -> Void) {
@@ -15,35 +19,37 @@ class FileWatcher {
     }
 
     func start() {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard !isWatching else { return }
         isWatching = true
         startMonitoring()
     }
 
     func stop() {
+        dispatchPrecondition(condition: .onQueue(.main))
         isWatching = false
         coalesceWorkItem?.cancel()
         coalesceWorkItem = nil
-        source?.cancel()
+        source?.cancel() // its cancel handler closes the descriptor
         source = nil
-        // fileDescriptor is closed by the source's cancel handler
-        fileDescriptor = -1
     }
 
     deinit {
-        stop()
+        // Nothing else holds the watcher by now, so nothing else can touch its state.
+        coalesceWorkItem?.cancel()
+        source?.cancel()
     }
 
     private func startMonitoring() {
-        guard isWatching else { return }
+        guard isWatching, source == nil else { return }
 
-        fileDescriptor = open(url.path, O_EVTONLY)
+        let fileDescriptor = open(url.path, O_EVTONLY)
         guard fileDescriptor >= 0 else { return }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fileDescriptor,
             eventMask: [.write, .rename, .delete, .attrib],
-            queue: queue
+            queue: .main
         )
 
         source.setEventHandler { [weak self] in
@@ -57,11 +63,8 @@ class FileWatcher {
             self.scheduleCallback()
         }
 
-        let fd = fileDescriptor
         source.setCancelHandler {
-            if fd >= 0 {
-                close(fd)
-            }
+            close(fileDescriptor)
         }
 
         self.source = source
@@ -72,7 +75,7 @@ class FileWatcher {
         source?.cancel()
         source = nil
         // Small delay to let the new file settle
-        queue.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.startMonitoring()
         }
     }
@@ -81,11 +84,10 @@ class FileWatcher {
         coalesceWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self, self.isWatching else { return }
-            DispatchQueue.main.async {
-                self.callback()
-            }
+            self.coalesceWorkItem = nil
+            self.callback()
         }
         coalesceWorkItem = workItem
-        queue.asyncAfter(deadline: .now() + 0.1, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
     }
 }

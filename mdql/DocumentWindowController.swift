@@ -45,11 +45,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate {
             let content = try? String(contentsOf: url, encoding: .utf8)
             completion(content)
         }
-        controller.toggleCheckbox = { [weak self] index, _, completion in
-            guard let url = self?.controller.fileURL else { completion(false); return }
+        controller.toggleCheckbox = { [weak self] offset, checked, completion in
+            guard let url = self?.controller.fileURL else { completion(.failed); return }
             DispatchQueue.global(qos: .userInitiated).async {
-                let ok = CheckboxToggle.toggle(fileAt: url, index: index)
-                DispatchQueue.main.async { completion(ok) }
+                let outcome = CheckboxToggle.toggle(fileAt: url, offset: offset, checked: checked)
+                DispatchQueue.main.async { completion(outcome) }
             }
         }
 

@@ -6,7 +6,6 @@
 #
 # Called by both the Xcode post-build phase and `make install`.
 # Single source of truth for installation and registration cleanup.
-# (AppDelegate cannot do this — the app is sandboxed.)
 
 set -euo pipefail
 
@@ -72,11 +71,21 @@ quit_viewers() { # <pid>...
     done
 }
 
-# 1. Copy to /Applications and re-sign (without --deep to preserve extension signature)
+# 1. Copy to /Applications and re-sign (without --deep to preserve extension signature).
+#    The build is checked for first: the installed app is only removed once there is
+#    one to put in its place.
+[ -d "$BUILT_PRODUCTS_DIR/$APP_NAME" ] || {
+    echo "error: no $APP_NAME in $BUILT_PRODUCTS_DIR; the installed one is left as it was" >&2
+    exit 1
+}
 mkdir -p "$INSTALL_DIR"
 rm -rf "$INSTALL_DIR/$APP_NAME"
 cp -R "$BUILT_PRODUCTS_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
-codesign --force --sign - "$INSTALL_DIR/$APP_NAME" 2>/dev/null || true
+signed="$(codesign --force --sign - "$INSTALL_DIR/$APP_NAME" 2>&1)" || {
+    printf '%s\n' "$signed" >&2
+    echo "error: could not re-sign $INSTALL_DIR/$APP_NAME" >&2
+    exit 1
+}
 echo "Installed $APP_NAME to $INSTALL_DIR"
 
 # 2. Unregister every other mdql.app LaunchServices knows of: DerivedData builds,
