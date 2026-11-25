@@ -345,7 +345,10 @@ final class MarkdownRendererTests: XCTestCase {
 
     func testMermaidDiagramReRendersOnThemeChange() {
         // The theme listener runs outside the first render; a scoping slip
-        // there throws before mermaid.render and leaves stale colors.
+        // there throws before mermaid.render and leaves stale colors. The node
+        // must take the colors too: since Mermaid 12 a flowchart has a theme of
+        // its own by default (redux-color), which the theme mdql initializes
+        // with must still override.
         let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A --> B\n```")
         let webView = mermaidWebView()
         webView.appearance = NSAppearance(named: .aqua)
@@ -355,21 +358,86 @@ final class MarkdownRendererTests: XCTestCase {
         webView.loadHTMLString(html, baseURL: nil)
         wait(for: [loaded], timeout: 5)
 
-        let svgID = "(document.querySelector('.markdown-body .mdql-mermaid svg') || {}).id || ''"
+        // The SVG's id, the brightness (0 to 1) of its first node's fill, and
+        // whether the page is dark.
+        let drawn = """
+            (function() {
+                var svg = document.querySelector('.markdown-body .mdql-mermaid svg');
+                var shape = svg && svg.querySelector('.node rect, .node path, .node polygon');
+                var rgb = shape ? (getComputedStyle(shape).fill.match(/\\d+/g) || []).slice(0, 3).map(Number) : [];
+                return [svg ? svg.id : '', rgb.length === 3 ? (rgb[0] + rgb[1] + rgb[2]) / 765 : -1,
+                        window.matchMedia('(prefers-color-scheme: dark)').matches];
+            })()
+            """
         var firstID = ""
-        pollJS(webView, svgID, "Initial SVG") { firstID = $0 as? String ?? ""; return !firstID.isEmpty }
+        pollJS(webView, drawn, "Initial SVG, light") { result in
+            guard let values = result as? [Any], let id = values[0] as? String, let fill = values[1] as? Double else { return false }
+            firstID = id
+            return !id.isEmpty && fill > 0.6
+        }
 
         webView.appearance = NSAppearance(named: .darkAqua)
-        pollJS(webView, "[\(svgID), window.matchMedia('(prefers-color-scheme: dark)').matches]", "Re-rendered SVG") { result in
-            guard let pair = result as? [Any], let id = pair.first as? String else { return false }
-            return pair.last as? Bool == true && !id.isEmpty && id != firstID
+        pollJS(webView, drawn, "Re-rendered SVG, dark") { result in
+            guard let values = result as? [Any], let id = values[0] as? String, let fill = values[1] as? Double else { return false }
+            return values[2] as? Bool == true && !id.isEmpty && id != firstID && fill >= 0 && fill < 0.4
         }
     }
 
-    /// A web view that serves the Mermaid runtime, as MarkdownWebController's does.
-    private func mermaidWebView() -> WKWebView {
+    func testMermaidFixtureDrawsEveryDiagramUnderThePageCSP() throws {
+        // Mermaid 12 inlines ELK, now its default layout: anything of it the
+        // page's CSP blocks (a worker, an eval) must show up here, not as a
+        // diagram quietly laid out some other way.
+        let html = try MarkdownRenderer.render(fileAt: fixtureURL("mermaid"))
+        let webView = mermaidWebView(atDocumentStart: """
+            window.__violations = [];
+            document.addEventListener('securitypolicyviolation', function(e) {
+                window.__violations.push(e.violatedDirective + ' ' + e.blockedURI);
+            });
+            """)
+        let loaded = expectation(description: "Page loaded")
+        let delegate = LoadDelegate { loaded.fulfill() }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(html, baseURL: nil)
+        wait(for: [loaded], timeout: 5)
+        pollJS(webView, "document.querySelectorAll('.markdown-body .mdql-mermaid svg').length", "Three diagrams") { $0 as? Int == 3 }
+
+        XCTAssertEqual(try evaluate("document.querySelectorAll('.mdql-mermaid-error, .mdql-mermaid-error-msg').length", in: webView) as? Int, 0,
+                       "No diagram may fail")
+        XCTAssertEqual(try evaluate("window.__violations.join('; ')", in: webView) as? String, "",
+                       "The CSP must block nothing Mermaid does")
+    }
+
+    func testMermaidSyntaxErrorKeepsTheSourceAndSaysWhy() throws {
+        // The real runtime, not a stand-in failure: with suppressErrorRendering
+        // a parse error rejects mermaid.render, so the fence keeps its source
+        // and gets mdql's note, and Mermaid draws no error diagram of its own.
+        let html = MarkdownRenderer.render(markdown: "```mermaid\nflowchart LR\n    A -->\n```")
+        let webView = mermaidWebView()
+        let loaded = expectation(description: "Page loaded")
+        let delegate = LoadDelegate { loaded.fulfill() }
+        webView.navigationDelegate = delegate
+        webView.loadHTMLString(html, baseURL: nil)
+        wait(for: [loaded], timeout: 5)
+        let note = "document.querySelector('.markdown-body pre.mdql-mermaid-error + .mdql-mermaid-error-msg')"
+        pollJS(webView, "!!\(note)", "Note under the fence") { $0 as? Bool == true }
+
+        let text = try XCTUnwrap(evaluate("\(note).textContent", in: webView) as? String)
+        XCTAssertTrue(text.hasPrefix("Diagram error: Parse error"), "The note must say why; got \(text)")
+        XCTAssertEqual(try evaluate("\(note).previousElementSibling.textContent", in: webView) as? String, "flowchart LR\n    A -->\n",
+                       "The fence must keep its source")
+        XCTAssertEqual(try evaluate("document.querySelectorAll('svg').length", in: webView) as? Int, 0,
+                       "Mermaid must draw no error diagram anywhere on the page")
+    }
+
+    /// A web view that serves the Mermaid runtime, as MarkdownWebController's
+    /// does, running `script` at document start when given.
+    private func mermaidWebView(atDocumentStart script: String? = nil) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         MermaidRuntime.install(on: configuration)
+        if let script {
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         return WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: configuration)
     }
 
