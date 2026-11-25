@@ -236,6 +236,26 @@ final class RenderedPageTests: XCTestCase {
         try waitUntilScrolled(to: "café", in: page)
     }
 
+    func testInTheViewerALinkToAHeadingInTheSameFileLandsBelowTheTitlebar() throws {
+        let page = try showUnderTitlebar("[Setup](#setup)\n\n\(filler)\n\n## Setup\n\nSetup text.\n\n\(filler)").webView
+        try evaluate("document.querySelector('a').click(); true", in: page)
+        try waitUntilScrolledBelowTitlebar(to: "setup", in: page)
+    }
+
+    func testInTheViewerALinkToAHeadingOfAnotherFileLandsBelowTheTitlebar() throws {
+        let shown = try showUnderTitlebar("[Setup](two.md#setup)")
+        let two = shown.file.deletingLastPathComponent().appendingPathComponent("two.md")
+        try Data("Top.\n\n\(filler)\n\n## Setup\n\nSetup text.\n\n\(filler)".utf8).write(to: two)
+
+        let followed = expectation(description: "followed the link to two.md")
+        shown.controller.fileURLDidChange = { url in
+            if url?.lastPathComponent == "two.md" { followed.fulfill() }
+        }
+        try evaluate("document.querySelector('a').click(); true", in: shown.webView)
+        wait(for: [followed], timeout: 10)
+        try waitUntilScrolledBelowTitlebar(to: "setup", in: shown.webView)
+    }
+
     // MARK: - A click flips that task's marker, and nothing else
 
     /// Each source holds the tasks `task0`, `task1`, … and decoys that look like a
@@ -689,6 +709,31 @@ final class RenderedPageTests: XCTestCase {
         try waitUntil("document.readyState === 'complete' && !!\(target) && window.scrollY > 0"
                       + " && Math.abs(\(target).getBoundingClientRect().top) < 2",
                       in: page, file: file, line: line)
+    }
+
+    /// `show`, with the viewer's chrome: a transparent titlebar 28 px high, its fade below.
+    private func showUnderTitlebar(_ markdown: String) throws -> Shown {
+        try show(markdown) { controller in
+            controller.appChrome = true
+            controller.topInset = 28
+        }
+    }
+
+    /// Waits until the page has scrolled the element with `id` to where the viewer's
+    /// first heading sits at scroll top: below the titlebar and its 50 px fade.
+    private func waitUntilScrolledBelowTitlebar(to id: String, in page: WKWebView,
+                                                file: StaticString = #filePath, line: UInt = #line) throws {
+        let target = "document.getElementById(\(String(reflecting: id)))"
+        try waitUntil("document.readyState === 'complete' && !!\(target) && window.scrollY > 0", in: page, file: file, line: line)
+        let measured = try XCTUnwrap(evaluate("""
+            [\(target).getBoundingClientRect().top,
+             parseFloat(getComputedStyle(document.body).paddingTop),
+             parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mdql-top'))]
+            """, in: page) as? [Double], file: file, line: line)
+        let (top, padding, inset) = (measured[0], measured[1], measured[2])
+        XCTAssertGreaterThanOrEqual(top, 50, "Lands under the fade", file: file, line: line)
+        XCTAssertGreaterThanOrEqual(top, inset, "Lands under the titlebar", file: file, line: line)
+        XCTAssertEqual(top, padding, accuracy: 1, "Lands elsewhere than the first heading sits at scroll top", file: file, line: line)
     }
 
     /// Clicks `- [ ] task` on a page whose saves `answer` replies to, with the

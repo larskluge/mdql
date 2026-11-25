@@ -619,7 +619,8 @@ public struct MarkdownRenderer {
                 return decoded(href.replace(/#.*$/, '').split('/').pop());
             }
 
-            // Brings the place a fragment names to the top: the element with
+            // Brings the place a fragment names to the top (in the viewer, below
+            // its titlebar: preview.css's scroll-margin-top): the element with
             // that id, else the <a> with that name, as a browser resolves a
             // fragment. No such element leaves the page where it is. Swift
             // calls it too, once a file a section link opened has loaded.

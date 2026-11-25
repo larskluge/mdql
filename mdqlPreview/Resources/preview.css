@@ -58,6 +58,14 @@ body.mdql-app::before {
     z-index: 100;
 }
 
+/* A section link's target lands where the document's top does, clear of the
+   titlebar, its fade and any notices: `__mdqlScrollTo`'s scrollIntoView()
+   honors it. Same expression as body.mdql-app's padding-top. */
+body.mdql-app [id],
+body.mdql-app a[name] {
+    scroll-margin-top: max(60px, var(--mdql-notice-room, 0px));
+}
+
 .markdown-body {
     max-width: 780px;
     margin: 0 auto;
