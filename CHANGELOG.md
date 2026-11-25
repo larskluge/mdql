@@ -9,6 +9,11 @@ below is the one hand-written exception, written before any tool could; its
 heading is the line every generated release gets, so the file reads as one
 sequence.
 
+## 0.4.7 — 2026-11-25
+
+### Fixed
+- the viewer's version badge reads the embedded Quick Look extension's version.txt, not 'dev' (mdql-m2d)
+
 ## 0.4.6 — 2026-11-25
 
 ### Added
