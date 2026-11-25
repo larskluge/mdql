@@ -459,6 +459,30 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertNil(MermaidRuntime.locate(in: try XCTUnwrap(Bundle(url: app))), "No runtime anywhere must be no runtime")
     }
 
+    func testAppReadsTheVersionOfTheExtensionItEmbeds() throws {
+        // The app's Stamp version phase writes no version.txt: its badge reads the extension's.
+        XCTAssertEqual(MarkdownRenderer.loadVersion(in: try appBundle(embeddedVersion: "0.4.5 (6d419a9)\n")), "0.4.5 (6d419a9)")
+        XCTAssertEqual(MarkdownRenderer.loadVersion(in: try appBundle(ownVersion: "0.4.6 (c5a31bf)\n", embeddedVersion: "0.4.5 (6d419a9)\n")),
+                       "0.4.6 (c5a31bf)", "A bundle's own version.txt comes first")
+        XCTAssertEqual(MarkdownRenderer.loadVersion(in: try appBundle()), "dev", "No version.txt anywhere must be dev")
+    }
+
+    /// A fresh mdql.app layout embedding mdqlPreview.appex, with the given
+    /// version.txt in each, so no lookup sees another test's files.
+    private func appBundle(ownVersion: String? = nil, embeddedVersion: String? = nil) throws -> Bundle {
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("mdql.app")
+        addTeardownBlock { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }
+        let own = app.appendingPathComponent("Contents/Resources")
+        let embedded = app.appendingPathComponent("Contents/PlugIns/mdqlPreview.appex/Contents/Resources")
+        for (resources, version) in [(own, ownVersion), (embedded, embeddedVersion)] {
+            try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+            if let version { try Data(version.utf8).write(to: resources.appendingPathComponent("version.txt")) }
+        }
+        try Data("<plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.example.app</string></dict></plist>".utf8)
+            .write(to: app.appendingPathComponent("Contents/Info.plist"))
+        return try XCTUnwrap(Bundle(url: app))
+    }
+
     func testOnlyAMermaidInfoStringIsADiagram() {
         XCTAssertTrue(MermaidRuntime.isDiagram(language: "mermaid"))
         XCTAssertTrue(MermaidRuntime.isDiagram(language: "mermaid demo"))

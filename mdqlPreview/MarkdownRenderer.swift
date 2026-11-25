@@ -4,6 +4,17 @@ import WebKit
 
 private class BundleAnchor {}
 
+extension Bundle {
+    /// A resource of this bundle, else of the Quick Look extension it embeds,
+    /// where the app finds what only the extension ships.
+    func ownOrEmbeddedPreviewURL(forResource name: String, withExtension ext: String) -> URL? {
+        if let url = url(forResource: name, withExtension: ext) { return url }
+        guard let plugIns = builtInPlugInsURL else { return nil }
+        let url = plugIns.appendingPathComponent("mdqlPreview.appex/Contents/Resources/\(name).\(ext)")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+}
+
 public struct MarkdownRenderer {
 
     /// Canonical preview size — used by QuickLook extension and screenshot tool.
@@ -718,11 +729,21 @@ public struct MarkdownRenderer {
     }
 
     static func loadVersion() -> String {
-        guard let url = Bundle(for: BundleAnchor.self).url(forResource: "version", withExtension: "txt"),
+        loadVersion(in: Bundle(for: BundleAnchor.self))
+    }
+
+    static func loadVersion(in bundle: Bundle) -> String {
+        guard let url = locateVersion(in: bundle),
               let version = try? String(contentsOf: url, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) else {
             return "dev"
         }
         return version
+    }
+
+    /// The build's version.txt. Only the extension's Stamp version phase writes
+    /// one, so the app reads the copy in the extension it embeds.
+    static func locateVersion(in bundle: Bundle) -> URL? {
+        bundle.ownOrEmbeddedPreviewURL(forResource: "version", withExtension: "txt")
     }
 
     static func escapeHTML(_ string: String) -> String {

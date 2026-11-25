@@ -31,10 +31,7 @@ enum MermaidRuntime {
     }()
 
     static func locate(in bundle: Bundle) -> URL? {
-        if let url = bundle.url(forResource: "mermaid.min", withExtension: "js") { return url }
-        guard let plugIns = bundle.builtInPlugInsURL else { return nil }
-        let url = plugIns.appendingPathComponent("mdqlPreview.appex/Contents/Resources/mermaid.min.js")
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        bundle.ownOrEmbeddedPreviewURL(forResource: "mermaid.min", withExtension: "js")
     }
 
     /// Whether a code block's info string makes it a diagram: its first word is
