@@ -71,6 +71,14 @@ body.mdql-app a[name] {
     margin: 0 auto;
 }
 
+/* While the back button shows, a window narrower than the column moves the
+   text right just clear of it: #mdql-back's left (20) + width (36) + the
+   notices' gap (12), less the body's padding (30). Wider ones stay centered. */
+#mdql-back ~ .markdown-body {
+    margin-left: max(calc(20px + 36px + 12px - 30px), calc((100% - 780px) / 2));
+    margin-right: auto;
+}
+
 .markdown-body > :first-child {
     margin-top: 0;
 }

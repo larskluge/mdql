@@ -256,6 +256,46 @@ final class RenderedPageTests: XCTestCase {
         try waitUntilScrolledBelowTitlebar(to: "setup", in: shown.webView)
     }
 
+    // MARK: - The back button covers no text
+
+    func testInANarrowWindowTheBackButtonCoversNoHeading() throws {
+        for inViewer in [true, false] {
+            let host = inViewer ? "viewer" : "Quick Look"
+            let shown = try show("[Two](two.md)", width: 600, inViewer: inViewer)
+            try follow(shown, to: "# Watering the garden\n\nAt dawn.")
+            let back = try rect(of: "#mdql-back", in: shown.webView)
+            let heading = try textRect(of: ".markdown-body h1", in: shown.webView)
+            XCTAssertFalse(heading.intersects(back), "\(host): the back button \(back) covers the first heading \(heading)")
+        }
+
+        let shown = try show("[Watering](two.md#watering)", width: 600, inViewer: true)
+        try follow(shown, to: "Top.\n\n\(filler)\n\n## Watering\n\nAt dawn.\n\n\(filler)")
+        try waitUntilScrolledBelowTitlebar(to: "watering", in: shown.webView)
+        let back = try rect(of: "#mdql-back", in: shown.webView)
+        let heading = try textRect(of: "#watering", in: shown.webView)
+        XCTAssertFalse(heading.intersects(back), "viewer: the back button \(back) covers the heading a section link landed on \(heading)")
+    }
+
+    func testInAWideWindowTheBackButtonMovesNoText() throws {
+        let second = "# Watering the garden\n\nAt dawn."
+        for inViewer in [true, false] {
+            let without = try show(second, width: 1200, inViewer: inViewer)
+            let with = try show("[Two](two.md)", width: 1200, inViewer: inViewer)
+            try follow(with, to: second)
+            XCTAssertEqual(try rect(of: ".markdown-body", in: with.webView).minX,
+                           try rect(of: ".markdown-body", in: without.webView).minX, accuracy: 0.5,
+                           "\(inViewer ? "viewer" : "Quick Look"): the text starts where it does without a back button")
+        }
+    }
+
+    func testInANarrowWindowAPageWithoutABackButtonStartsItsTextAtTheBodysPadding() throws {
+        for inViewer in [true, false] {
+            let page = try show("# Watering the garden\n\nAt dawn.", width: 600, inViewer: inViewer).webView
+            XCTAssertEqual(try rect(of: ".markdown-body", in: page).minX, 30, accuracy: 0.5,
+                           "\(inViewer ? "viewer" : "Quick Look"): no back button, no room kept for one")
+        }
+    }
+
     // MARK: - A click flips that task's marker, and nothing else
 
     /// Each source holds the tasks `task0`, `task1`, … and decoys that look like a
@@ -657,10 +697,25 @@ final class RenderedPageTests: XCTestCase {
     /// A page reached by following a link, which has a back button.
     private func showSecondPage(in appearance: NSAppearance.Name) throws -> Shown {
         let shown = try show("[Two](two.md)", appearance: appearance)
-        try Data("Second page.".utf8).write(to: shown.file.deletingLastPathComponent().appendingPathComponent("two.md"))
+        try follow(shown, to: "Second page.")
+        return shown
+    }
+
+    /// Clicks the page's first link, to `two.md` beside it holding `markdown`,
+    /// and waits until that shows, with its back button.
+    private func follow(_ shown: Shown, to markdown: String) throws {
+        try Data(markdown.utf8).write(to: shown.file.deletingLastPathComponent().appendingPathComponent("two.md"))
         try evaluate("document.querySelector('a').click(); true", in: shown.webView)
         try waitUntil("!!document.getElementById('mdql-back') && document.readyState === 'complete'", in: shown.webView)
-        return shown
+    }
+
+    /// `show`, `width` points wide, with the viewer's chrome when `inViewer`, else as Quick Look shows it.
+    private func show(_ markdown: String, width: CGFloat, inViewer: Bool) throws -> Shown {
+        try show(markdown) { controller in
+            controller.webView.setFrameSize(NSSize(width: width, height: MarkdownRenderer.previewSize.height))
+            controller.appChrome = inViewer
+            controller.topInset = inViewer ? 28 : 0
+        }
     }
 
     /// Loads `file` as both hosts do, reading through `MarkdownText`.
@@ -694,8 +749,19 @@ final class RenderedPageTests: XCTestCase {
     }
 
     private func rect(of selector: String, in page: WKWebView) throws -> CGRect {
+        try boundingRect(of: "document.querySelector('\(selector)')", in: page)
+    }
+
+    /// Where the text of `selector` is drawn, not its box, which a heading's spans the column's width.
+    private func textRect(of selector: String, in page: WKWebView) throws -> CGRect {
+        try boundingRect(of: "(function (range) { range.selectNodeContents(document.querySelector('\(selector)')); return range; })(document.createRange())",
+                         in: page)
+    }
+
+    /// The bounding client rect of what the JavaScript `expression` evaluates to.
+    private func boundingRect(of expression: String, in page: WKWebView) throws -> CGRect {
         let r = try XCTUnwrap(evaluate("""
-            var r = document.querySelector('\(selector)').getBoundingClientRect(); [r.left, r.top, r.width, r.height]
+            var r = (\(expression)).getBoundingClientRect(); [r.left, r.top, r.width, r.height]
             """, in: page) as? [Double])
         return CGRect(x: r[0], y: r[1], width: r[2], height: r[3])
     }
