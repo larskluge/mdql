@@ -7,6 +7,7 @@ and relaunches the viewer. Here it installs into a scratch directory (MDQL_INSTA
 `lsregister` is a stub (MDQL_LSREGISTER), and `pgrep`, `lsof`, `osascript`, `open`,
 `codesign`, `qlmanage` and `sleep` are stubs on PATH. A running viewer is a real process,
 a `sleep`, so that whether it was quit is a fact about a pid rather than a line in a log.
+`make check-registrations`, the check `make install` makes after it, reads the same stub.
 Nothing here touches /Applications, LaunchServices, or an mdql that is really running.
 """
 
@@ -432,6 +433,49 @@ class InstallTests(unittest.TestCase):
         result = self.installed()
         self.assertIn("lsregister: fake cannot unregister", result.stderr)
         self.assertRegex(result.stderr, rf"warning: .*{stray}")
+
+    # ---- `make install`'s check of what is left registered -----------------------------
+
+    def check_registrations(self):
+        return subprocess.run(
+            ["make", "--no-print-directory", "-C", str(SCRIPT.parent.parent),
+             "check-registrations", f"LSREGISTER={self.bin / 'lsregister'}"],
+            env=dict(os.environ, FAKE=str(self.fake)), capture_output=True, text=True,
+        )
+
+    # What LaunchServices lists on a Mac where only the installed mdql is registered:
+    # the bundle and its extension, and folders named for the bundle id, which are no
+    # bundles: the viewer's temp folder (2026-11-27, reported as stale by every install)
+    # and its WebKit processes', its container's Application Scripts and WebKit data.
+    INSTALLED = [
+        "/Applications/mdql.app",
+        "/Applications/mdql.app/Contents/PlugIns/mdqlPreview.appex",
+        "/private/var/folders/rl/abc/T/com.mdql.app",
+        "/private/var/folders/rl/abc/T/com.apple.WebKit.WebContent+com.mdql.app",
+        "/Users/ada/Library/Application Scripts/com.mdql.app",
+        "/Users/ada/Library/WebKit/com.mdql.app",
+    ]
+
+    def test_folders_named_for_the_bundle_id_are_not_stale_registrations(self):
+        self.register(*self.INSTALLED)
+        result = self.check_registrations()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, "OK: No duplicate registrations\n")
+
+    def test_another_registered_mdql_is_reported_stale(self):
+        stray = "/Users/ada/code/mdql/build/mdql/Build/Products/Release/mdql.app"
+        self.register(*self.INSTALLED, stray, f"{stray}/Contents/PlugIns/mdqlPreview.appex")
+        result = self.check_registrations()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout, f"WARN: Stale lsregister entries found:\n  {stray}\n")
+
+    def test_registrations_that_cannot_be_read_fail_the_check(self):
+        (self.fake / "registrations").unlink()
+        result = self.check_registrations()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("OK", result.stdout)
+        self.assertIn("could not read the LaunchServices registrations", result.stdout + result.stderr)
+        self.assertIn("No such file or directory", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

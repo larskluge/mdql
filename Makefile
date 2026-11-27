@@ -1,4 +1,4 @@
-.PHONY: install test clean
+.PHONY: install check-registrations test clean
 
 BUNDLE_ID := com.mdql.app.preview
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister
@@ -32,15 +32,28 @@ install:
 			echo "ERROR: Extension not registered!"; \
 			exit 1; \
 		fi
-	@# Verify no stale lsregister entries
-	@STALE="$$($(LSREGISTER) -dump 2>/dev/null | grep 'path:' | grep 'mdql.app' | grep -v '.appex' | grep -Ev 'path:[[:space:]]*/Applications/mdql\.app ' | grep -v 'Application Scripts' | grep -v 'WebKit' || true)" && \
+	@$(MAKE) --no-print-directory check-registrations
+	@echo "Done. Test with: qlmanage -p README.md"
+
+# Every mdql.app LaunchServices still knows of besides /Applications/mdql.app: one that
+# scripts/install.sh could not unregister. Only a path ending in /mdql.app is a bundle;
+# the folders named for the bundle id (the viewer's temp folder …/T/com.mdql.app, its
+# container's Application Scripts and WebKit data) are not. lsregister's own lines on
+# stderr are kept for a failure, where they are its reason.
+check-registrations:
+	@DUMP="$$($(LSREGISTER) -dump 2>&1)" || { \
+			echo "ERROR: could not read the LaunchServices registrations (lsregister -dump):"; \
+			printf '%s\n' "$$DUMP" | tail -n 20 | sed 's/^/  /'; \
+			exit 1; \
+		}; \
+		STALE="$$(printf '%s\n' "$$DUMP" | sed -n -e '\#^[[:space:]]*path:[[:space:]]*/Applications/mdql\.app (#d' \
+			-e 's#^[[:space:]]*path:[[:space:]]*\(.*/mdql\.app\) (0x[0-9a-f]*)$$#\1#p' | sort -u)"; \
 		if [ -n "$$STALE" ]; then \
 			echo "WARN: Stale lsregister entries found:"; \
 			echo "$$STALE" | sed 's/^/  /'; \
 		else \
 			echo "OK: No duplicate registrations"; \
 		fi
-	@echo "Done. Test with: qlmanage -p README.md"
 
 # Every test in the repository. `version-test` runs first because it needs nothing
 # at all and takes seconds: a broken version tool should not be discovered after
